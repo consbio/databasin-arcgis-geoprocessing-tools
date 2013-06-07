@@ -47,32 +47,22 @@ class TemporaryWorkspace:
                 i += 1
 
 
+def getMXDPathForService(serviceID):
+    #return self.svcMXDs[serviceID]
+    if settings.ARCGIS_VERSION=="10.0":
+        configFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%s.MapServer.cfg"%(serviceID))
+        if not os.path.exists(configFilename):
+            raise ReferenceError("Map service config file not found: %s, make sure the service is published and serviceID is valid"%(configFilename))
+        infile=open(configFilename)
+        xml=infile.read()
+        infile.close()
+        return re.search("(?<=<FilePath>).*?(?=</FilePath>)",xml).group().strip()
 
-class MapServiceFinder:
-    """
-    Find a map service MXD file by service ID, from a list of all available services on server
-    Note: this may be inefficient on a server with lots of services
-    """
+    elif settings.ARCGIS_VERSION=="10.1": #Not yet tested!
+        from xml.etree import ElementTree
+        configFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%sMapServer/esriinfo/manifest/manifest.xml"%(serviceID))
+        if not os.path.exists(configFilename):
+            raise ReferenceError("Map service config file not found: %s, make sure the service is published and serviceID is valid"%(configFilename))
+        xml = ElementTree.parse(configFilename)
+        return xml.getroot().find("Resources/SVCResource/ServerPath").text.strip().replace(".msd",".mxd")
 
-    def __init__(self):
-        self.svcMXDs=dict()
-        if settings.ARCGIS_VERSION=="10.0":
-            for filename in glob(os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"*.MapServer.cfg")):
-                svcID=os.path.split(filename)[1].replace(".MapServer.cfg","")
-                infile=open(filename)
-                xml=infile.read()
-                infile.close()
-                match=re.search("(?<=<FilePath>).*?(?=</FilePath>)",xml)
-                if match:
-                    self.svcMXDs[svcID]=match.group().strip()
-
-        elif settings.ARCGIS_VERSION=="10.1": #Not yet tested!
-            from xml.etree import ElementTree
-            for filename in glob(os.normpath(os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"*.MapServer/esriinfo/manifest/manifest.xml"))):
-                xml = ElementTree.parse(filename)
-                svcID=xml.getroot().find("Name").text.strip()
-                mxdPath = xml.getroot().find("Resources/SVCResource/ServerPath").text.strip().replace(".msd",".mxd")
-                self.svcMXDs[svcID]=mxdPath
-
-    def getMXDPathForService(self,serviceID):
-        return self.svcMXDs[serviceID]
