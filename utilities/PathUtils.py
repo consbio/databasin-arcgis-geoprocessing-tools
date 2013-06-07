@@ -60,7 +60,7 @@ def getMXDPathForService(serviceID):
 
     elif settings.ARCGIS_VERSION=="10.1": #Not yet tested!
         from xml.etree import ElementTree
-        configFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%sMapServer/esriinfo/manifest/manifest.xml"%(serviceID))
+        configFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%s.MapServer/esriinfo/manifest/manifest.xml"%(serviceID))
         if not os.path.exists(configFilename):
             raise ReferenceError("Map service config file not found: %s, make sure the service is published and serviceID is valid"%(configFilename))
         xml = ElementTree.parse(configFilename)

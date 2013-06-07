@@ -45,12 +45,15 @@ import arcpy, sys, tempfile, time, traceback, shutil, json, re, copy
 from utilities import FeatureSetConverter, ProjectionUtilities
 import settings
 from utilities.PathUtils import TemporaryWorkspace,getMXDPathForService
+from tool_logging import ToolLogger
 
 #Setup environment variables
 arcpy.env.overwriteOutput = True
 
 #Setup globals
 TEMP_WORKSPACE=TemporaryWorkspace()
+logger = ToolLogger.getLogger("tabulate")
+
 
 class FeatureClassWrapper:
     """
@@ -78,6 +81,7 @@ class FeatureClassWrapper:
     def project(self,targetSpatialReference):
         projKey = "%s_%s" % (self.name,self._getProjID(targetSpatialReference))
         if not self._prjCache.has_key(projKey):
+            logger.debug("Projecting %s"%(self.name))
             projFCPath=os.path.join(TEMP_WORKSPACE.getGDB(), projKey)
             if arcpy.Exists(projFCPath):
                 arcpy.Delete_management(projFCPath)
@@ -125,7 +129,7 @@ class SummaryResult:
     """
     def __init__(self):
         self.count=0
-        self.quantity=0
+        self.quantity=0 #quantity is area / length if applicable
     def update(self,count,quantity=None):
         self.count+=count
         if quantity:
@@ -286,9 +290,11 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference):
     #Convert the projected user defined feature class (projFC) to a temporary raster - which is in the same spatial reference as the target raster.
     lyrInfo = arcpy.Describe(layer.dataSource)
     projFC=srcFC.project(lyrInfo.spatialReference)
+    logger.debug("Creating area of interest raster")
     arcpy.FeatureToRaster_conversion(projFC, arcpy.Describe(projFC).OIDFieldName, aoiGrid, lyrInfo.meanCellHeight)
     #clip the target using this grid, snapped to the original grid - watch for alignment issues in aoiGrid - snapRaster is not used there
     arcpy.env.extent=arcpy.Describe(aoiGrid).extent #this dramatically speeds up processing
+    logger.debug("Extracting area of interest from %s"%(layer.name))
     clipGrid = arcpy.sa.ExtractByMask(layer, aoiGrid)
 
     #Cell area is based on the projection: uses native projection of clipGrid if it is a projected system, otherwise project cell area to target spatialReference
@@ -387,7 +393,9 @@ def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference):
 
         #project the selection to target projection, and then intersect with source (in target projection)
         geoTransform=ProjectionUtilities.getGeoTransform(arcpy.Describe(layer.dataSource).spatialReference, spatialReference)
+        logger.debug("Projected selected features from %s"%(layer.name))
         projFC = FeatureClassWrapper(arcpy.Project_management(selFC, "projFC", spatialReference,geoTransform).getOutput(0))
+        logger.debug("Intersecting selected features with area of interest")
         intFC = FeatureClassWrapper(arcpy.Intersect_analysis([srcFC.project(spatialReference), projFC.featureClass], "IN_MEMORY/" + "intFC").getOutput(0))
 
         featureCount = int(arcpy.GetCount_management(intFC.featureClass).getOutput(0))
@@ -520,17 +528,20 @@ def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference):
             raise ValueError("LAYER_NOT_FOUND: Layer not found for layerID: %s" % (layerID))
         layer = layers[layerID]
         try:
+            logger.debug("Processing layer %s: %s"%(layerID,layer.name))
             result={"layerID":layerID}
             if layer.isRasterLayer:
                 result.update(tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference))
             elif layer.isFeatureLayer:
                 result.update(tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference))
             else:
+                logger.error("Layer type is unsupported %s: %s"%(layerID,layer.name))
                 result["error"]="unsupported layer type"
             results.append(result)
         except:
-            #TODO: log this
-            results.append({"layerID":layerID,"error":traceback.format_exc()})
+            error=traceback.format_exc()
+            logger.error("Error processing layer %s: %s\n%s"%(layerID,layer.name,error))
+            results.append({"layerID":layerID,"error":error})
 
     del mapDoc
     return {"serviceID":serviceID,"layers":results}
@@ -566,11 +577,11 @@ def tabulateMapServices(srcFC,config,projectionWKID):
     for mapServiceConfig in config["services"]:
         serviceID = mapServiceConfig["serviceID"]
         try:
-
-           results["services"].append(tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference))
+            logger.debug("Processing map service: %s"%(serviceID))
+            results["services"].append(tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference))
         except:
-            #TODO: log error
             error=traceback.format_exc()
+            logger.error("Error processing map service: %s\n%s"%(serviceID,error))
             results["services"].append({"error":error})
 
     TEMP_WORKSPACE.delete()
