@@ -44,15 +44,13 @@ import arcpy, sys, tempfile, time, traceback, shutil, json, re, copy
 
 from utilities import FeatureSetConverter, ProjectionUtilities
 import settings
-from utilities.PathUtils import TemporaryWorkspace,MapServiceFinder
+from utilities.PathUtils import TemporaryWorkspace,getMXDPathForService
 
 #Setup environment variables
 arcpy.env.overwriteOutput = True
 
 #Setup globals
 TEMP_WORKSPACE=TemporaryWorkspace()
-SVC_FINDER=MapServiceFinder()
-
 
 class FeatureClassWrapper:
     """
@@ -296,7 +294,6 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference):
     #Cell area is based on the projection: uses native projection of clipGrid if it is a projected system, otherwise project cell area to target spatialReference
     cellArea, projectionType = ProjectionUtilities.getCellArea(clipGrid, spatialReference)
 
-    print "tabulating results"
     if lyrInfo.pixelType.count("F"):
         #force to single bit data, since we can't build attribute tables of floating point data.
         #this preserves NODATA areas from clipGrid (don't use aoiGrid for this!)
@@ -513,7 +510,7 @@ def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference):
     '''
 
     results=[]
-    mapDocPath = SVC_FINDER.getMXDPathForService(serviceID)
+    mapDocPath = getMXDPathForService(serviceID)
     mapDoc = arcpy.mapping.MapDocument(mapDocPath)
     layers = arcpy.mapping.ListLayers(mapDoc, "*", arcpy.mapping.ListDataFrames(mapDoc)[0])
     for layerConfig in mapServiceConfig['layers']:
@@ -619,9 +616,9 @@ if __name__=="__main__":
     srcFC = FeatureClassWrapper(FeatureSetConverter.createFeatureClass(featureSetJSON))
     config=json.loads('''{"services":[{"serviceID":"smc","layers":[{"layerID":2,"attributes":[{"attribute":"STATE_NAME"}]},{"layerID":6},{"layerID":7,"attributes":[{"attribute":"LABEL"}]}]}]}''')# ##
     results = tabulateMapServices(srcFC,config,102003)
-    print json.dumps(results,indent=2)
+    print json.dumps(results,indent=1)
     outfile=open("c:/temp/results.json",'w')
-    outfile.write(json.dumps(results,indent=2))
+    outfile.write(json.dumps(results,indent=1))
     outfile.close()
 
     #del srcFC
