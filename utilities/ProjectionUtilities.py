@@ -85,11 +85,11 @@ def getCellArea(grid,targetSR):
         ySize=(projExtent.YMax-projExtent.YMin)/float(info.height)
         areaFactor=getProjUnitFactors(targetSR)[1]
         cellArea=round(xSize*ySize*areaFactor,4)
-        projType="Target"
+        projType="target"
         print xSize,ySize,areaFactor,cellArea
     else:
         #use the native projection; assume it is the most correct for the dataset
         areaFactor=getProjUnitFactors(info.spatialReference)[1]
         cellArea=round(info.meanCellHeight*info.meanCellWidth * areaFactor,4)
-        projType="Native"
+        projType="native"
     return cellArea,projType

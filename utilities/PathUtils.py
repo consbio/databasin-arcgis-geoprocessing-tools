@@ -5,10 +5,8 @@ class TemporaryWorkspace:
     """
     Manage a temporary workspace, including GDB
     """
-
-    def __init__(self):
-        self.tmpDir = tempfile.mkdtemp()#"d:/temp"#TODO
-        print "Allocated temporary directory: ", self.tmpDir
+    def init(self):
+        self.tmpDir = tempfile.mkdtemp()
         self.gdb = None
 
     def getDirectory(self):

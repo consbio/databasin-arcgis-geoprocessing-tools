@@ -31,29 +31,25 @@ TODO:
 
 '''
 
-
-
+import os,sys, tempfile, time, traceback, shutil, json, re, copy
 if __name__ == "__main__":
     #Make sure we're using the ArcGIS server (as opposed to the Desktop) arcpy package.
-    import sys,os
     for path in filter(lambda x: os.path.normpath(x.lower()).replace("\\","/").count("arcgis/server"),sys.path):
         sys.path.insert(0, path)
 
-import arcpy, sys, tempfile, time, traceback, shutil, json, re, copy
-#import numpy #May not be needed
-
+import arcpy
 from utilities import FeatureSetConverter, ProjectionUtilities
 import settings
 from utilities.PathUtils import TemporaryWorkspace,getMXDPathForService
 from tool_logging import ToolLogger
 
+
 #Setup environment variables
 arcpy.env.overwriteOutput = True
 
 #Setup globals
-TEMP_WORKSPACE=TemporaryWorkspace()
 logger = ToolLogger.getLogger("tabulate")
-
+TEMP_WORKSPACE=TemporaryWorkspace()
 
 class FeatureClassWrapper:
     """
@@ -296,6 +292,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference):
     arcpy.env.extent=arcpy.Describe(aoiGrid).extent #this dramatically speeds up processing
     logger.debug("Extracting area of interest from %s"%(layer.name))
     clipGrid = arcpy.sa.ExtractByMask(layer, aoiGrid)
+    arcpy.env.extent=None
 
     #Cell area is based on the projection: uses native projection of clipGrid if it is a projected system, otherwise project cell area to target spatialReference
     cellArea, projectionType = ProjectionUtilities.getCellArea(clipGrid, spatialReference)
@@ -316,7 +313,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference):
             classResults=[]
             for classIndex in range(0,len(layerConfig["classes"])):
                 count=classCounts.get(classIndex,0)
-                classResults.append({"class":classIndex,"count":count,"quantity":(float(count)*cellArea)})
+                classResults.append({"class":layerConfig["classes"][classIndex],"count":count,"quantity":(float(count)*cellArea)})
             results.update({'classes':classResults})
 
     else:
@@ -420,7 +417,7 @@ def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference):
             total=0
             count=0
             for row in rows:
-                geometryCount=1#row.shape.partCount #Note: this counts all geometries independently, is NOT number of features
+                geometryCount=1 #row.shape.partCount #Note: this counts all geometries independently, is NOT number of features
                 count+= geometryCount
                 quantity = None
                 if intersectionQuantityAttribute:
@@ -440,7 +437,7 @@ def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference):
             total=0
             count=0
             for row in rows:
-                geometryCount=row.shape.partCount
+                geometryCount=1 #row.shape.partCount
                 count+= geometryCount
                 quantity = None
                 if intersectedQuantityAttribute:
@@ -494,19 +491,20 @@ def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference):
 
         else:
             print "No features intersected for this layer: %s"%(layer.name)
-            results["intersectionFeatureCount"]=0
-            results["intersectedFeatureCount"]=0 #no point in tallying features we don't have from intersection
-
-        return results
+            logger.debug("No Features intersected for this layer: %s" % (layer.name))
+            results["intersectionCount"]=0
+            results["intersectedCount"]=0 #no point in tallying features we don't have from intersection
 
     else:
         #TODO
         print "No Features selected for this layer: %s"%(layer.name)
-        #messages.addMessage("No Features selected for this layer: %s" % (lyr.name))
-        results["intersectedFeatureCount"]=0
-
+        logger.debug("No Features selected for this layer: %s" % (layer.name))
+        results["intersectionCount"]=0
+        results["intersectedCount"]=0
 
     del selLyr
+    return results
+
 
 
 def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference):
@@ -553,6 +551,10 @@ def tabulateMapServices(srcFC,config,projectionWKID):
     config: TODO: operate on original list of map services
     projectionWKID: ESRI WKID representing the target projection to use for all calculations (e.g., 102003, which is USA_Contiguous_Albers_Equal_Area_Conic)
     '''
+
+    #setup temporary workspace
+    TEMP_WORKSPACE.init()
+    logger.debug("Temporary workspace: %s"%(TEMP_WORKSPACE.getDirectory()))
 
     results=dict()
     if not config.has_key("services"):
@@ -624,8 +626,11 @@ if __name__=="__main__":
     #print json.dumps(tabulateFeatureLayer(srcFC,fc,fcLayerConfig,spatialReference))
 
 
-    srcFC = FeatureClassWrapper(FeatureSetConverter.createFeatureClass(featureSetJSON))
-    config=json.loads('''{"services":[{"serviceID":"smc","layers":[{"layerID":2,"attributes":[{"attribute":"STATE_NAME"}]},{"layerID":6},{"layerID":7,"attributes":[{"attribute":"LABEL"}]}]}]}''')# ##
+    #srcFC = FeatureClassWrapper(FeatureSetConverter.createFeatureClass(featureSetJSON))
+    #config=json.loads('''{"services":[{"serviceID":"smc","layers":[{"layerID":2,"attributes":[{"attribute":"STATE_NAME"}]},{"layerID":6},{"layerID":7,"attributes":[{"attribute":"LABEL"}]}]}]}''')# ##
+    LINE_JSON="""{"displayFieldName":"","geometryType":"esriGeometryPolyline","spatialReference":{"wkid":102100,"latestWkid":3857},"fields":[{"name":"OBJECTID","type":"esriFieldTypeOID","alias":"OBJECTID"},{"name":"SHAPE_Length","type":"esriFieldTypeDouble","alias":"SHAPE_Length"}],"features":[{"attributes":{"OBJECTID":1,"SHAPE_Length":20271.902391560558},"geometry":{"paths":[[[-12515628.3368,3958632.1604000032],[-12509134.533199999,3956248.0033000037],[-12506537.328299999,3952727.7947999984],[-12505715.1676,3948924.8555999994],[-12509496.627900001,3945519.4327000007]]]}}]}"""
+    srcFC = FeatureClassWrapper(FeatureSetConverter.createFeatureClass(LINE_JSON))
+    config=json.loads('''{"services":[{"serviceID":"test","layers":[{"layerID":0,"attributes":[{"attribute":"NAME"}]},{"layerID":5},{"layerID":5,"classes":[[0,300],[300,310],[310,400]]}]}]}''')
     results = tabulateMapServices(srcFC,config,102003)
     print json.dumps(results,indent=1)
     outfile=open("c:/temp/results.json",'w')
