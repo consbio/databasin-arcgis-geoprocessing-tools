@@ -52,7 +52,7 @@ def getFeatureGeometry(geomType,geometry):
 
 
 #Main function
-def createFeatureClass(featureSet):
+def createFeatureClass(featureSet,name="drawingFC"):
     srcFeatureJSON=json.loads(featureSet)
     geomType=srcFeatureJSON["geometryType"]
     srcFeatures=srcFeatureJSON["features"]
@@ -63,14 +63,13 @@ def createFeatureClass(featureSet):
     sr.factoryCode = int(srcFeatureJSON["spatialReference"]["wkid"])
     sr.create()
 
-    drawingFC="IN_MEMORY/drawingFC"
+    drawingFC="IN_MEMORY/%s"%(name)
 
     #create dataset
     if arcpy.Exists(drawingFC):
         arcpy.Delete_management(drawingFC)
     path,fcName=os.path.split(drawingFC)
     arcpy.CreateFeatureclass_management(path,fcName, geomType.replace("esriGeometry",""),"","","",sr)
-
 
     #add fields
     fields=[]
