@@ -590,56 +590,13 @@ def tabulateMapServices(srcFC,config,projectionWKID):
     return results
 
 
-#Testing
-if __name__=="__main__":
-    start=time.time()
-
-    # spatialReference = arcpy.SpatialReference()
-    # spatialReference.factoryCode = 102003
-    # spatialReference.create()
-
-    #featureSetJSON='''{"displayFieldName":"","geometryType":"esriGeometryPolygon","spatialReference":{"wkid":102100,"latestWkid":3857},"fields":[{"name":"OBJECTID","type":"esriFieldTypeOID","alias":"OBJECTID"},{"name":"SHAPE_Length","type":"esriFieldTypeDouble","alias":"SHAPE_Length"},{"name":"SHAPE_Area","type":"esriFieldTypeDouble","alias":"SHAPE_Area"}],"features":[{"attributes":{"OBJECTID":1,"SHAPE_Length":903.47742081348633,"SHAPE_Area":52657.151961896809},"geometry":{"rings":[[[-12749182.316300001,3983403.194600001],[-12749009.746399999,3983330.2292999998],[-12749032.203200001,3983190.6643000022],[-12749208.489700001,3983156.1856999993],[-12749348.539999999,3983246.1792000011],[-12749182.316300001,3983403.194600001]]]}}]}'''
-    featureSetJSON='''{"displayFieldName":"","geometryType":"esriGeometryPolygon","spatialReference":{"wkid":102100,"latestWkid":3857},"fields":[{"name":"OBJECTID","type":"esriFieldTypeOID","alias":"OBJECTID"},{"name":"SHAPE_Length","type":"esriFieldTypeDouble","alias":"SHAPE_Length"},{"name":"SHAPE_Area","type":"esriFieldTypeDouble","alias":"SHAPE_Area"}],"features":[{"attributes":{"OBJECTID":1,"SHAPE_Length":23286.161534325816,"SHAPE_Area":31607836.704571243},"geometry":{"rings":[[[-12754420.4892,3983627.7704000026],[-12753544.328499999,3985117.1664000005],[-12752845.3035,3985796.7431000024],[-12751042.6261,3986175.6309999973],[-12750311.6776,3985388.565700002],[-12750241.625799999,3985298.930399999],[-12750003.2579,3984234.6823000014],[-12750140.830600001,3983355.2833999991],[-12750478.8661,3982565.8571000025],[-12750655.4538,3982143.8426000029],[-12750676.4888,3981726.4562000036],[-12750788.282499999,3981110.5216000006],[-12750739.5836,3980474.3769999966],[-12751519.452399999,3979443.4860000014],[-12751501.209899999,3979392.0658000037],[-12752286.2476,3979732.4545999989],[-12752908.5514,3979584.6982000023],[-12753686.6029,3979303.0693000033],[-12754062.682700001,3979358.4636999965],[-12754719.2163,3979642.9319999963],[-12755631.4169,3980032.1739000008],[-12756002.561799999,3980062.6503999978],[-12757401.512499999,3980407.8849999979],[-12757652.2004,3980487.795599997],[-12756967.1229,3982146.3825000003],[-12754420.4892,3983627.7704000026]]]}}]}'''
-    # srcFC = FeatureClassWrapper(FeatureSetConverter.createFeatureClass(featureSetJSON))
-
-    # results=dict()
-    # results["units"]="hectares" #always
-    # results["sourceGeometryType"]=srcFC.geometryType.lower().replace("polyline","line")
-    # results["sourceFeatureCount"]=srcFC.numFeatures
-    # if srcFC.geometryType in ["Polygon","Polyline"]:
-    #     results["sourceFeatureQuantity"]=srcFC.getTotalAreaOrLength(spatialReference)
-
-
-    #layer=arcpy.mapping.Layer(r"D:\BLM_REA\Final_Deliverable\SOD_2011\Raster\Change_Agents\Invasives\Inv_Current\sod_iv_c_rip")
-    #layer=arcpy.mapping.Layer(r"D:\BLM_REA\Final_Deliverable\SOD_2011\Raster\Change_Agents\Invasives\Inv_Current\sod_iv23064in")
-    #raster=arcpy.mapping.Layer(r"D:\BLM_REA\Final_Deliverable\SOD_2011\Raster\Conservation_Elements\Terrestrial\Ecosystem\sod_c_smc_mg")
-    #layerConfig=json.loads('''{"statistics":["MIN","MAX","MEAN"],"classes":[[0,1],[1,2],[2,3]]}''')
-    #layerConfig=json.loads('''{"statistics":["MIN","MAX","MEAN"],"classes":[[0,0.001],[0.001,0.25],[0.25,1]]}''')
-    #rasterLayerConfig=json.loads('''{"attributes":[{"attribute":"LABEL"}]}''')
-    #layerConfig=json.loads('''{"classes":[[0,1],[1,2]]}''')
-
-    #fc=arcpy.mapping.Layer(r"D:\BLM_REA\Final_Deliverable\SOD_2011\Vector\Conservation_Elements\Ecological_Integrity\SOD_EI_HUC5.gdb\SOD_EI_HUC5_poly")
-    #fcLayerConfig = json.loads('''{"attributes":[{"attribute":"HUC_10_NM"},{"attribute":"TS_Feature_Count","classes":[[0,4],[4,6],[6,25]]},{"attribute":"Total_CE","statistics":["MIN","MAX","MEAN"]}]}''')
-
-    #print results
-    #print json.dumps(tabulateRasterLayer(srcFC,raster,rasterLayerConfig,spatialReference))
-    #print json.dumps(tabulateFeatureLayer(srcFC,fc,fcLayerConfig,spatialReference))
-
-
-    #srcFC = FeatureClassWrapper(FeatureSetConverter.createFeatureClass(featureSetJSON))
-    #config=json.loads('''{"services":[{"serviceID":"smc","layers":[{"layerID":2,"attributes":[{"attribute":"STATE_NAME"}]},{"layerID":6},{"layerID":7,"attributes":[{"attribute":"LABEL"}]}]}]}''')# ##
-    LINE_JSON="""{"displayFieldName":"","geometryType":"esriGeometryPolyline","spatialReference":{"wkid":102100,"latestWkid":3857},"fields":[{"name":"OBJECTID","type":"esriFieldTypeOID","alias":"OBJECTID"},{"name":"SHAPE_Length","type":"esriFieldTypeDouble","alias":"SHAPE_Length"}],"features":[{"attributes":{"OBJECTID":1,"SHAPE_Length":20271.902391560558},"geometry":{"paths":[[[-12515628.3368,3958632.1604000032],[-12509134.533199999,3956248.0033000037],[-12506537.328299999,3952727.7947999984],[-12505715.1676,3948924.8555999994],[-12509496.627900001,3945519.4327000007]]]}}]}"""
-    srcFC = FeatureClassWrapper(FeatureSetConverter.createFeatureClass(LINE_JSON))
-    config=json.loads('''{"services":[{"serviceID":"test","layers":[{"layerID":0,"attributes":[{"attribute":"NAME"}]},{"layerID":5},{"layerID":5,"classes":[[0,300],[300,310],[310,400]]}]}]}''')
-    results = tabulateMapServices(srcFC,config,102003)
-    print json.dumps(results,indent=1)
-    outfile=open("c:/temp/results.json",'w')
-    outfile.write(json.dumps(results,indent=1))
-    outfile.close()
-
-    #del srcFC
-    #TEMP_WORKSPACE.delete()
-    print "elapsed: %.2f"%(time.time()-start)
+if arcpy.GetParameter(0):
+    srcFC=FeatureClassWrapper(FeatureSetConverter.createFeatureClass(arcpy.GetParameterAsText(0)))
+    config=json.loads(arcpy.GetParameterAsText(1))
+    targetProjectionWKID=arcpy.GetParameter(2)
+    results = json.dumps(tabulateMapServices(srcFC,config,targetProjectionWKID))
+    #arcpy.AddMessage(results)
+    arcpy.SetParameter(3,results)
 
 
 
