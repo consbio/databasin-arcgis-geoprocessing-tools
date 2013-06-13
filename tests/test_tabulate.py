@@ -13,6 +13,9 @@ import pytest
 import settings
 from tabulate import *
 from utilities.FeatureSetConverter import createFeatureClass
+from messaging import MessageHandler
+
+
 
 POLYGON_JSON="""{"displayFieldName":"","geometryType":"esriGeometryPolygon","spatialReference":{"wkid":102100,"latestWkid":3857},"fields":[{"name":"OBJECTID","type":"esriFieldTypeOID","alias":"OBJECTID"},{"name":"SHAPE_Length","type":"esriFieldTypeDouble","alias":"SHAPE_Length"},{"name":"SHAPE_Area","type":"esriFieldTypeDouble","alias":"SHAPE_Area"}],"features":[{"attributes":{"OBJECTID":3,"SHAPE_Length":49763.191463275194,"SHAPE_Area":161738984.17682847},"geometry":{"rings":[[[-12510743.8804,3962356.0276999995],[-12500772.095800001,3955536.6137000024],[-12509264.1962,3945822.1655000001],[-12510936.8827,3944921.4880999997],[-12513381.578299999,3946015.1677000001],[-12517112.955699999,3957466.636500001],[-12514925.5965,3960040.0002999976],[-12510743.8804,3962356.0276999995]]]}}]}"""
 LINE_JSON="""{"displayFieldName":"","geometryType":"esriGeometryPolyline","spatialReference":{"wkid":102100,"latestWkid":3857},"fields":[{"name":"OBJECTID","type":"esriFieldTypeOID","alias":"OBJECTID"},{"name":"SHAPE_Length","type":"esriFieldTypeDouble","alias":"SHAPE_Length"}],"features":[{"attributes":{"OBJECTID":1,"SHAPE_Length":20271.902391560558},"geometry":{"paths":[[[-12515628.3368,3958632.1604000032],[-12509134.533199999,3956248.0033000037],[-12506537.328299999,3952727.7947999984],[-12505715.1676,3948924.8555999994],[-12509496.627900001,3945519.4327000007]]]}}]}"""
@@ -20,9 +23,11 @@ POINT_JSON="""{"displayFieldName":"","geometryType":"esriGeometryPoint","spatial
 
 
 def test_tabulateMapServices_polygon_aoi():
+    messages = MessageHandler(logger=logger)
+    arcpy.Delete_management("IN_MEMORY/")
     srcFC = FeatureClassWrapper(createFeatureClass(POLYGON_JSON))
     config=json.loads('''{"services":[{"serviceID":"test","layers":[{"layerID":0,"attributes":[{"attribute":"NAME"}]},{"layerID":5},{"layerID":5,"classes":[[0,300],[300,310],[310,400]]}]}]}''')
-    results = tabulateMapServices(srcFC,config,102003)
+    results = tabulateMapServices(srcFC,config,102003,messages)
 
     assert results['units']=="hectares"
     assert results['sourceGeometryType']=="polygon"
@@ -54,10 +59,11 @@ def test_tabulateMapServices_polygon_aoi():
 
 
 def test_tabulateMapServices_line_aoi():
+    messages = MessageHandler(logger=logger)
     arcpy.Delete_management("IN_MEMORY/")
     srcFC = FeatureClassWrapper(createFeatureClass(LINE_JSON))
     config=json.loads('''{"services":[{"serviceID":"test","layers":[{"layerID":0,"attributes":[{"attribute":"NAME"}]},{"layerID":5},{"layerID":5,"classes":[[0,300],[300,310],[310,400]]}]}]}''')
-    results = tabulateMapServices(srcFC,config,102003)
+    results = tabulateMapServices(srcFC,config,102003,messages)
 
     assert results['units']=="hectares"
     assert results['sourceGeometryType']=="line"
@@ -84,10 +90,11 @@ def test_tabulateMapServices_line_aoi():
 
 
 def test_tabulateMapServices_point_aoi():
+    messages = MessageHandler(logger=logger)
     arcpy.Delete_management("IN_MEMORY/")
     srcFC = FeatureClassWrapper(createFeatureClass(POINT_JSON))
     config=json.loads('''{"services":[{"serviceID":"test","layers":[{"layerID":4,"attributes":[{"attribute":"STATE_NAME"}]},{"layerID":5},{"layerID":5,"classes":[[0,300],[300,310],[310,400]]}]}]}''')
-    results = tabulateMapServices(srcFC,config,102003)
+    results = tabulateMapServices(srcFC,config,102003,messages)
 
     assert results['units']=="hectares"
     assert results['sourceGeometryType']=="point"
