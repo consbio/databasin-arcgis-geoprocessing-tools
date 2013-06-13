@@ -42,6 +42,7 @@ from utilities import FeatureSetConverter, ProjectionUtilities
 import settings
 from utilities.PathUtils import TemporaryWorkspace,getMXDPathForService
 from tool_logging import ToolLogger
+from messaging import MessageHandler
 
 
 #Setup environment variables
@@ -265,7 +266,7 @@ def getGridCount(grid, summaryField):
 
 
 
-def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference):
+def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
     '''
     srcFC: source feature class wrapper
     layer: layer object
@@ -369,7 +370,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference):
 
 
 
-def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference):
+def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages):
     arcpy.env.workspace = arcpy.env.scratchWorkspace = TEMP_WORKSPACE.getGDB()
     arcpy.env.cartographicCoordinateSystem = spatialReference
     arcpy.env.extent=None
@@ -507,7 +508,7 @@ def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference):
 
 
 
-def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference):
+def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference,messages):
     '''
     srcFC: source feature class wrapper
     mapDocPath: path to the map document behind the map service
@@ -519,6 +520,7 @@ def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference):
     mapDocPath = getMXDPathForService(serviceID)
     mapDoc = arcpy.mapping.MapDocument(mapDocPath)
     layers = arcpy.mapping.ListLayers(mapDoc, "*", arcpy.mapping.ListDataFrames(mapDoc)[0])
+    messages.setMinorSteps(len(mapServiceConfig['layers']))
     for layerConfig in mapServiceConfig['layers']:
         lyrResults = dict()
         layerID = int(layerConfig["layerID"])
@@ -529,9 +531,9 @@ def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference):
             logger.debug("Processing layer %s: %s"%(layerID,layer.name))
             result={"layerID":layerID}
             if layer.isRasterLayer:
-                result.update(tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference))
+                result.update(tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages))
             elif layer.isFeatureLayer:
-                result.update(tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference))
+                result.update(tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages))
             else:
                 logger.error("Layer type is unsupported %s: %s"%(layerID,layer.name))
                 result["error"]="unsupported layer type"
@@ -541,11 +543,13 @@ def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference):
             logger.error("Error processing layer %s: %s\n%s"%(layerID,layer.name,error))
             results.append({"layerID":layerID,"error":error})
 
+        messages.incrementMinorStep()
+
     del mapDoc
     return {"serviceID":serviceID,"layers":results}
 
 
-def tabulateMapServices(srcFC,config,projectionWKID):
+def tabulateMapServices(srcFC,config,projectionWKID,messages):
     '''
     srcFC: instance of FeatureClass wrapper with the area of interest features
     config: TODO: operate on original list of map services
@@ -576,28 +580,20 @@ def tabulateMapServices(srcFC,config,projectionWKID):
         results["sourceFeatureQuantity"]=srcFC.getTotalAreaOrLength(spatialReference)
     results["services"]=[]
 
+    messages.setMajorSteps(len(config["services"]))
     for mapServiceConfig in config["services"]:
         serviceID = mapServiceConfig["serviceID"]
         try:
             logger.debug("Processing map service: %s"%(serviceID))
-            results["services"].append(tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference))
+            results["services"].append(tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference,messages))
         except:
             error=traceback.format_exc()
             logger.error("Error processing map service: %s\n%s"%(serviceID,error))
             results["services"].append({"error":error})
+        messages.incrementMajorStep()
 
     TEMP_WORKSPACE.delete()
     return results
-
-
-if arcpy.GetParameter(0):
-    srcFC=FeatureClassWrapper(FeatureSetConverter.createFeatureClass(arcpy.GetParameterAsText(0)))
-    config=json.loads(arcpy.GetParameterAsText(1))
-    targetProjectionWKID=arcpy.GetParameter(2)
-    results = json.dumps(tabulateMapServices(srcFC,config,targetProjectionWKID))
-    #arcpy.AddMessage(results)
-    arcpy.SetParameter(3,results)
-
 
 
 
