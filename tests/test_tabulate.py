@@ -9,7 +9,6 @@ TODO
 
 """
 
-import pytest
 import settings
 from tabulate import *
 from utilities.FeatureSetConverter import createFeatureClass
@@ -122,3 +121,13 @@ def test_tabulateMapServices_point_aoi():
     assert layerResults['classes'][0]['count']==1
     assert layerResults['classes'][0]['class']==[0,300]
     assert layerResults['classes'][0]['quantity']==0.089999999999999997
+
+
+
+#Temporary
+messages = MessageHandler(logger=logger)
+srcFC = FeatureClassWrapper(createFeatureClass(POLYGON_JSON))
+config=json.loads('''{"services":[{"serviceID":"carbon","layers":[{"layerID":0,"statistics":["SUM"]}]}]}''')
+results = tabulateMapServices(srcFC,config,102003,messages)
+
+test_tabulateMapServices_polygon_aoi()

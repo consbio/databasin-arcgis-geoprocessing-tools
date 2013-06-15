@@ -5,9 +5,22 @@ class TemporaryWorkspace:
     """
     Manage a temporary workspace, including GDB
     """
-    def init(self):
-        self.tmpDir = tempfile.mkdtemp()
+
+    def __init__(self):
+        self._managed=True
         self.gdb = None
+        self.tmpDir = None
+        if arcpy.env.scratchWorkspace:
+            self._managed=False
+            scratchDir,extension=os.path.splitext(arcpy.env.scratchWorkspace)
+            scratchGDB=os.path.join(scratchDir,"scratch.gdb")
+            if extension.lower()==".gdb":
+                self.gdb=arcpy.env.scratchWorkspace
+            elif os.path.exists(scratchGDB):
+                self.gdb=scratchGDB
+            self.tmpDir=scratchDir
+        else:
+            self.tmpDir = os.path.normpath(tempfile.mkdtemp())
 
     def getDirectory(self):
         return self.tmpDir
@@ -25,7 +38,7 @@ class TemporaryWorkspace:
         Attempt to remove directory.  ArcGIS may be holding a lock on files within the directory, so continue to try up to 30 seconds
         """
 
-        if not os.path.exists(self.tmpDir):
+        if not (self._managed and os.path.exists(self.tmpDir)):
             return True
         startTime = time.time()
         timeout=10 #timeout is 10 seconds
