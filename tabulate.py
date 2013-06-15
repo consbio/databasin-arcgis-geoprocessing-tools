@@ -47,6 +47,8 @@ from messaging import MessageHandler
 
 #Setup environment variables
 arcpy.env.overwriteOutput = True
+arcpy.env.pyramid="NONE"
+arcpy.env.rasterStatistics="NONE" #we will calculate these manually as required
 
 #Setup globals
 logger = ToolLogger.getLogger("tabulate")
@@ -59,7 +61,14 @@ class FeatureClassWrapper:
 
     def __init__(self,featureClass):
         self.featureClass=featureClass
-        self.info=arcpy.Describe(featureClass)
+        fcPath=str(featureClass)
+        if fcPath.count("IN_MEMORY/"): #need to persist or it will fail during projection steps
+            newFCPath=os.normpath(fcPath.replace("IN_MEMORY",TEMP_WORKSPACE.getGDB()))
+            if arcpy.Exists(newFCPath):
+                arcpy.Delete_management(newFCPath)
+            arcpy.CopyFeatures_management(featureClass,newFCPath)
+            self.featureClass=newFCPath
+        self.info=arcpy.Describe(self.featureClass)
         self.geometryType=self.info.shapeType
         self.spatialReference=self.info.spatialReference
         self.numFeatures=int(arcpy.GetCount_management(featureClass).getOutput(0))
@@ -78,11 +87,13 @@ class FeatureClassWrapper:
     def project(self,targetSpatialReference):
         projKey = "%s_%s" % (self.name,self._getProjID(targetSpatialReference))
         if not self._prjCache.has_key(projKey):
-            logger.debug("Projecting %s"%(self.name))
-            projFCPath=os.path.join(TEMP_WORKSPACE.getGDB(), projKey)
+            targetProjLabel = targetSpatialReference.factoryCode or targetSpatialReference.exporttostring()
+            projFCPath=os.path.join(TEMP_WORKSPACE.getGDB(),projKey)
             if arcpy.Exists(projFCPath):
                 arcpy.Delete_management(projFCPath)
             geoTransform=ProjectionUtilities.getGeoTransform(self.spatialReference, targetSpatialReference)
+            logger.debug("Source Exists? %s"%(arcpy.Exists(self.featureClass)))
+            logger.debug("Projecting %s to %s using transform %s"%(self.name,targetProjLabel,geoTransform))
             self._prjCache[projKey] = arcpy.Project_management(self.featureClass, projFCPath,targetSpatialReference,geoTransform).getOutput(0)
         return self._prjCache[projKey]
 
@@ -221,6 +232,7 @@ def getGridClasses(grid, field, classBreaks):
     for i in range(0,len(classBreaks)):
         classBreak=classBreaks[i]
         remapClasses.append([classBreak[0],classBreak[1],i])
+    arcpy.CalculateStatistics_management(grid)
     reclassGrid = arcpy.sa.Reclassify(grid, field, arcpy.sa.RemapRange(remapClasses), "NODATA")
     results = dict()
     rows = arcpy.SearchCursor(reclassGrid)
@@ -234,8 +246,19 @@ def getGridClasses(grid, field, classBreaks):
 
 def getGridStats(grid, statisticsList):
     '''
-    return SUM, MIN, MAX, etc (TODO: other names)
+    return MEAN,MIN, MAX, etc (TODO: other names)
     '''
+
+    #TODO: add support for sum
+    """
+    If small raster:
+    z = arcpy.RasterToNumPyArray("c:/temp/small_grid")
+    >>> z1 = np.ma.masked_array(z, np.isnan(z))
+    >>> np.sum(z1)
+
+    otherwise use zonal stats
+
+    """
 
     results = dict()
     arcpy.CalculateStatistics_management(grid)
@@ -274,20 +297,24 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
     spatialReference: spatial reference object with target projection
     '''
 
-    arcpy.CheckOutExtension("Spatial")
-    arcpy.env.snapRaster = layer.dataSource
-    arcpy.env.workspace=arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getDirectory()
-
     results=dict()
 
-    aoiGrid = "aoiGrid"
-    if arcpy.Exists(aoiGrid):
-        arcpy.Delete_management(aoiGrid)
+    arcpy.CheckOutExtension("Spatial")
+    arcpy.env.snapRaster = layer.dataSource
 
     #Convert the projected user defined feature class (projFC) to a temporary raster - which is in the same spatial reference as the target raster.
     lyrInfo = arcpy.Describe(layer.dataSource)
     projFC=srcFC.project(lyrInfo.spatialReference)
+
     logger.debug("Creating area of interest raster")
+    #arcpy.env.workspace=TEMP_WORKSPACE.getDirectory()
+    # try:
+    #     arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getDirectory() # this completely crashes the server container, somehow scratchWorkspace is getting corrupted and cannot be set
+    #     logger.debug("Set scratch workspace")
+    # except:
+    #     logger.debug("Could not set scratch workspace")
+
+    aoiGrid = "aoiGrid"
     arcpy.FeatureToRaster_conversion(projFC, arcpy.Describe(projFC).OIDFieldName, aoiGrid, lyrInfo.meanCellHeight)
     #clip the target using this grid, snapped to the original grid - watch for alignment issues in aoiGrid - snapRaster is not used there
     arcpy.env.extent=arcpy.Describe(aoiGrid).extent #this dramatically speeds up processing
@@ -371,7 +398,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
 
 def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages):
-    arcpy.env.workspace = arcpy.env.scratchWorkspace = TEMP_WORKSPACE.getGDB()
+    #arcpy.env.workspace = TEMP_WORKSPACE.getGDB()
     arcpy.env.cartographicCoordinateSystem = spatialReference
     arcpy.env.extent=None
 
@@ -556,9 +583,8 @@ def tabulateMapServices(srcFC,config,projectionWKID,messages):
     projectionWKID: ESRI WKID representing the target projection to use for all calculations (e.g., 102003, which is USA_Contiguous_Albers_Equal_Area_Conic)
     '''
 
-    #setup temporary workspace
-    TEMP_WORKSPACE.init()
-    logger.debug("Temporary workspace: %s"%(TEMP_WORKSPACE.getDirectory()))
+    logger.debug("Temporary Workspace: %s"%(TEMP_WORKSPACE.getDirectory()))
+    arcpy.env.workspace=arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getGDB()
 
     results=dict()
     if not config.has_key("services"):
