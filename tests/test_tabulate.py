@@ -126,8 +126,8 @@ def test_tabulateMapServices_point_aoi():
 
 #Temporary
 messages = MessageHandler(logger=logger)
-srcFC = FeatureClassWrapper(createFeatureClass(POLYGON_JSON))
+srcFC = FeatureClassWrapper(createFeatureClass("""{"displayFieldName":"","geometryType":"esriGeometryPolygon","spatialReference":{"wkid":102003,"latestWkid":102003},"fields":[{"name":"OBJECTID","type":"esriFieldTypeOID","alias":"OBJECTID"},{"name":"Shape_Length","type":"esriFieldTypeDouble","alias":"Shape_Length"},{"name":"Shape_Area","type":"esriFieldTypeDouble","alias":"Shape_Area"}],"features":[{"attributes":{"OBJECTID":1,"Shape_Length":8947.7759814140481,"Shape_Area":3868577.3915753877},"geometry":{"rings":[[[3649727.1272,-3495143.9892999995],[3650945.7780999988,-3494602.5586999999],[3653060.6279000007,-3494606.1886],[3650430.4331,-3496894.4358000001],[3649584.9202000014,-3495322.3015000001],[3649727.1272,-3495143.9892999995]]]}}]}"""))
 config=json.loads('''{"services":[{"serviceID":"carbon","layers":[{"layerID":0,"statistics":["SUM"]}]}]}''')
 results = tabulateMapServices(srcFC,config,102003,messages)
-
-test_tabulateMapServices_polygon_aoi()
+print results
+#test_tabulateMapServices_polygon_aoi()
