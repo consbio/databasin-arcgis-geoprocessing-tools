@@ -63,7 +63,7 @@ class FeatureClassWrapper:
         self.featureClass=featureClass
         fcPath=str(featureClass)
         if fcPath.count("IN_MEMORY/"): #need to persist or it will fail during projection steps
-            newFCPath=os.normpath(fcPath.replace("IN_MEMORY",TEMP_WORKSPACE.getGDB()))
+            newFCPath=os.path.normpath(fcPath.replace("IN_MEMORY",TEMP_WORKSPACE.getGDB()))
             if arcpy.Exists(newFCPath):
                 arcpy.Delete_management(newFCPath)
             arcpy.CopyFeatures_management(featureClass,newFCPath)
@@ -92,7 +92,6 @@ class FeatureClassWrapper:
             if arcpy.Exists(projFCPath):
                 arcpy.Delete_management(projFCPath)
             geoTransform=ProjectionUtilities.getGeoTransform(self.spatialReference, targetSpatialReference)
-            logger.debug("Source Exists? %s"%(arcpy.Exists(self.featureClass)))
             logger.debug("Projecting %s to %s using transform %s"%(self.name,targetProjLabel,geoTransform))
             self._prjCache[projKey] = arcpy.Project_management(self.featureClass, projFCPath,targetSpatialReference,geoTransform).getOutput(0)
         return self._prjCache[projKey]
@@ -243,32 +242,6 @@ def getGridClasses(grid, field, classBreaks):
 
 
 
-
-def getGridStats(grid, statisticsList):
-    '''
-    return MEAN,MIN, MAX, etc (TODO: other names)
-    '''
-
-    #TODO: add support for sum
-    """
-    If small raster:
-    z = arcpy.RasterToNumPyArray("c:/temp/small_grid")
-    >>> z1 = np.ma.masked_array(z, np.isnan(z))
-    >>> np.sum(z1)
-
-    otherwise use zonal stats
-
-    """
-
-    results = dict()
-    arcpy.CalculateStatistics_management(grid)
-    for statistic in statisticsList:
-        statistic = statistic.upper()
-        arcGIS_statistic=statistic+"IMUM" if statistic in ["MIN","MAX"] else statistic
-        results[statistic] = arcpy.GetRasterProperties_management(grid, arcGIS_statistic).getOutput(0)
-    return results
-
-
 def getGridCount(grid, summaryField):
     '''
     Return total count of pixels, and count by summary field if passed in
@@ -306,81 +279,107 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
     lyrInfo = arcpy.Describe(layer.dataSource)
     projFC=srcFC.project(lyrInfo.spatialReference)
 
-    logger.debug("Creating area of interest raster")
-    #arcpy.env.workspace=TEMP_WORKSPACE.getDirectory()
-    # try:
-    #     arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getDirectory() # this completely crashes the server container, somehow scratchWorkspace is getting corrupted and cannot be set
-    #     logger.debug("Set scratch workspace")
-    # except:
-    #     logger.debug("Could not set scratch workspace")
+    arcpy.env.workspace=TEMP_WORKSPACE.getDirectory()
+    try:
+        arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getDirectory() # this completely crashes the server container, somehow scratchWorkspace is getting corrupted and cannot be set
+        logger.debug("Set scratch workspace")
+    except:
+        logger.debug("Could not set scratch workspace")
 
+    logger.debug("Creating area of interest raster")
     aoiGrid = "aoiGrid"
     arcpy.FeatureToRaster_conversion(projFC, arcpy.Describe(projFC).OIDFieldName, aoiGrid, lyrInfo.meanCellHeight)
-    #clip the target using this grid, snapped to the original grid - watch for alignment issues in aoiGrid - snapRaster is not used there
-    arcpy.env.extent=arcpy.Describe(aoiGrid).extent #this dramatically speeds up processing
-    logger.debug("Extracting area of interest from %s"%(layer.name))
-    clipGrid = arcpy.sa.ExtractByMask(layer, aoiGrid)
-    arcpy.env.extent=None
 
     #Cell area is based on the projection: uses native projection of clipGrid if it is a projected system, otherwise project cell area to target spatialReference
-    cellArea, projectionType = ProjectionUtilities.getCellArea(clipGrid, spatialReference)
+    cellArea, projectionType = ProjectionUtilities.getCellArea(layer.dataSource, spatialReference)
 
-    if lyrInfo.pixelType.count("F"):
-        #force to single bit data, since we can't build attribute tables of floating point data.
-        #this preserves NODATA areas from clipGrid (don't use aoiGrid for this!)
-        testGrid = clipGrid != lyrInfo.noDataValue
-        arcpy.BuildRasterAttributeTable_management(testGrid)
-        totalCount, summaryCount = getGridCount(testGrid, None)
-        del testGrid
+    try:
+        arcpy.env.extent=arcpy.Describe(aoiGrid).extent #this dramatically speeds up processing
 
         if layerConfig.has_key("statistics"):
-            results.update({'statistics':getGridStats(clipGrid, layerConfig["statistics"])})
+            results["statistics"]=dict()
+            logger.debug("Creating zone grid for statistics from area of interest grid")
+            zoneGrid= arcpy.Raster(aoiGrid) * 0
+            statistics=dict()
+            for statistic in layerConfig["statistics"]:
+                arcgisStatistic = statistic.upper()
+                statistics[statistic]=arcgisStatistic+"IMUM" if arcgisStatistic in ["MIN","MAX"] else arcgisStatistic
+            zonalStatsTable="zonalStatsTable"
+            if arcpy.Exists(zonalStatsTable):
+                arcpy.Delete_management(zonalStatsTable)
+            #note: may need to make layer in to a Raster
+            logger.debug("Executing zonal statistics: %s"%(",".join(statistics.values())))
+            zonalStatsTable = arcpy.sa.ZonalStatisticsAsTable(zoneGrid, "VALUE", arcpy.Raster(layer.dataSource), zonalStatsTable, "DATA", ",".join(statistics.values()))
+            del zoneGrid
 
-        elif layerConfig.has_key("classes"):
-            classCounts=getGridClasses(clipGrid, "VALUE", layerConfig["classes"])
-            classResults=[]
-            for classIndex in range(0,len(layerConfig["classes"])):
-                count=classCounts.get(classIndex,0)
-                classResults.append({"class":layerConfig["classes"][classIndex],"count":count,"quantity":(float(count)*cellArea)})
-            results.update({'classes':classResults})
-
-    else:
-        #TODO: verify this works correctly against other data sources, e.g., GeoTiff
-        if layerConfig.has_key("statistics"):
-            results.update({'statistics':getGridStats(clipGrid, layerConfig["statistics"])})
+            totalCount=0
+            rows=arcpy.SearchCursor(zonalStatsTable)
+            if rows:
+                for row in rows:
+                    totalCount+=row.COUNT
+                    for statistic in statistics:
+                        results["statistics"][statistic]=row.getValue(statistics[statistic])
+                    break #should only have one row
+                del row
+            del rows,zonalStatsTable
+            arcpy.Delete_management("zonalStatsTable")
 
         else:
-            arcpy.BuildRasterAttributeTable_management(clipGrid)
-            promoteValueResults=False
-            if not layerConfig.has_key("attributes"):
-                promoteValueResults=True
-                layerConfig["attributes"]=[{'attribute':'VALUE'}]
+            #clip the target using this grid, snapped to the original grid - watch for alignment issues in aoiGrid - snapRaster is not used there
+            logger.debug("Extracting area of interest from %s"%(layer.name))
+            clipGrid = arcpy.sa.ExtractByMask(layer, aoiGrid)
+
+            if lyrInfo.pixelType.count("F"):
+                #force to single bit data, since we can't build attribute tables of floating point data.
+                #this preserves NODATA areas from clipGrid (don't use aoiGrid for this!)
+                testGrid = clipGrid != lyrInfo.noDataValue
+                arcpy.BuildRasterAttributeTable_management(testGrid)
+                totalCount, summaryCount = getGridCount(testGrid, None)
+                del testGrid
+
                 if layerConfig.has_key("classes"):
-                    layerConfig["attributes"][0]['classes']=layerConfig['classes']
+                    classCounts=getGridClasses(clipGrid, "VALUE", layerConfig["classes"])
+                    classResults=[]
+                    for classIndex in range(0,len(layerConfig["classes"])):
+                        count=classCounts.get(classIndex,0)
+                        classResults.append({"class":layerConfig["classes"][classIndex],"count":count,"quantity":(float(count)*cellArea)})
+                    results.update({'classes':classResults})
 
-            summaryFields=dict([(summaryField["attribute"],SummaryField(summaryField,True)) for summaryField in layerConfig.get("attributes",[])])
-            if summaryFields:
-                fieldList = set([field.name for field in arcpy.ListFields(clipGrid)])
-                diffFields = set(summaryFields.keys()).difference(fieldList)
-                if diffFields:
-                    raise ValueError("FIELD_NOT_FOUND: Fields do not exist in layer %s: %s"%(layer.name,",".join([str(fieldName) for fieldName in diffFields])))
-                results["attributes"]=[]
-
-            count=0
-            rows = arcpy.SearchCursor(clipGrid, "", "")
-            for row in rows:
-                count+=row.COUNT
-                for summaryField in summaryFields:
-                    summaryFields[summaryField].addRecord(row.getValue(summaryField),row.COUNT,row.COUNT*cellArea)
-            del row,rows
-            results["intersectionPixelCount"]=count
-
-            if promoteValueResults:
-                key = "classes" if layerConfig.has_key("classes") else "values"
-                results[key]=summaryFields["VALUE"].getResults()[key]
             else:
-                for summaryField in summaryFields:
-                    results["attributes"].append(summaryFields[summaryField].getResults())
+                arcpy.BuildRasterAttributeTable_management(clipGrid)
+                promoteValueResults=False
+                if not layerConfig.has_key("attributes"):
+                    promoteValueResults=True
+                    layerConfig["attributes"]=[{'attribute':'VALUE'}]
+                    if layerConfig.has_key("classes"):
+                        layerConfig["attributes"][0]['classes']=layerConfig['classes']
+
+                summaryFields=dict([(summaryField["attribute"],SummaryField(summaryField,True)) for summaryField in layerConfig.get("attributes",[])])
+                if summaryFields:
+                    fieldList = set([field.name for field in arcpy.ListFields(clipGrid)])
+                    diffFields = set(summaryFields.keys()).difference(fieldList)
+                    if diffFields:
+                        raise ValueError("FIELD_NOT_FOUND: Fields do not exist in layer %s: %s"%(layer.name,",".join([str(fieldName) for fieldName in diffFields])))
+                    results["attributes"]=[]
+
+                count=0
+                rows = arcpy.SearchCursor(clipGrid, "", "")
+                for row in rows:
+                    count+=row.COUNT
+                    for summaryField in summaryFields:
+                        summaryFields[summaryField].addRecord(row.getValue(summaryField),row.COUNT,row.COUNT*cellArea)
+                del row,rows
+                results["intersectionPixelCount"]=count
+
+                if promoteValueResults:
+                    key = "classes" if layerConfig.has_key("classes") else "values"
+                    results[key]=summaryFields["VALUE"].getResults()[key]
+                else:
+                    for summaryField in summaryFields:
+                        results["attributes"].append(summaryFields[summaryField].getResults())
+            del clipGrid
+    finally:
+        arcpy.env.extent=None
 
     results["pixelArea"] = cellArea
     results["projectionType"] = projectionType
@@ -390,7 +389,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
     arcpy.CheckInExtension("Spatial")
     #delete references in this order, otherwise does not delete cleanly
-    del clipGrid,aoiGrid
+    del aoiGrid
     arcpy.Delete_management("aoiGrid")
 
     return results
@@ -545,6 +544,7 @@ def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference,message
 
     results=[]
     mapDocPath = getMXDPathForService(serviceID)
+    logger.debug("Map document for service %s: %s"%(serviceID,mapDocPath))
     mapDoc = arcpy.mapping.MapDocument(mapDocPath)
     layers = arcpy.mapping.ListLayers(mapDoc, "*", arcpy.mapping.ListDataFrames(mapDoc)[0])
     messages.setMinorSteps(len(mapServiceConfig['layers']))
