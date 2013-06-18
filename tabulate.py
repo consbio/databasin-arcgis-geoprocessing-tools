@@ -1,35 +1,12 @@
-'''
+"""
 Tabulate feature or raster data using features contained in a FeatureSet
 
-------------------------------------------------
-Examples:
-
-feature layer:
-layerConfig: {"attributes":[{"attribute":"HUC_10_NM"},{"attribute":"TS_Feature_Count","classes":[[0,4],[4,6],[6,25]]},{"attribute":"Total_CE","statistics":["MIN","MAX","MEAN"]}]}
-
-results:
-{"intersectedGeometryType": "polygon", "intersectionQuantity": 2184.4220716173904, "intersectedQuantity": 163191.1489418, "intersectedCount": 5, "attributes": [{"MIN": 11, "attribute": "Total_CE", "MEAN": 11.259328347566484, "MAX": 12}, {"attribute": "TS_Feature_Count", "classes": [{"intersectedQuantity": 0, "intersectedCount": 0, "intersectionQuantity": 0, "class": [0, 4], "intersectionCount": 0}, {"intersectedQuantity": 163191.1489418, "intersectedCount": 5, "intersectionQuantity": 2184.4220716173904, "class": [4, 6], "intersectionCount": 4}, {"intersectedQuantity": 0, "intersectedCount": 0, "intersectionQuantity": 0, "class": [6, 25], "intersectionCount": 0}]}, {"attribute": "HUC_10_NM", "values": [{"intersectedQuantity": 62672.645755559286, "intersectedCount": 2, "intersectionQuantity": 565.92190886362118, "intersectionCount": 2, "value": "Ehrenberg Wash-Colorado River"}, {"intersectedQuantity": 100518.50318624072, "intersectedCount": 3, "intersectionQuantity": 1618.5001627537692, "intersectionCount": 2, "value": "Palo Verde Valley"}]}], "intersectionGeometryType": "polygon", "intersectionCount": 4}
-
-
-
-raster layer:
-layerConfig: {"attributes":[{"attribute":"LABEL"}]}
-
-results:
-{"intersectionPixelCount": 24265, "sourcePixelCount": 24265, "intersectionQuantity": 2183.8499999999999, "pixelArea": 0.089999999999999997, "geometryType": "pixel", "projectionType": "Native", "attributes": [{"attribute": "LABEL", "values": [{"count": 24030, "value": " ", "quantity": 2162.6999999999998}, {"count": 25, "value": "LANDFIRE EVT and NatureServe Landcover", "quantity": 2.25}, {"count": 5, "value": "LANDFIRE EVT", "quantity": 0.44999999999999996}, {"count": 205, "value": "NatureServe Landcover", "quantity": 18.449999999999999}]}]}
-
-------------------------------------------------
-
-
-Notes to self:
-- lots of assumptions hardwired to working with web mercator as source projection for features?
+See test_tabulate for example usage.
 
 TODO:
-- add logging and messaging back in
-- add tests
 - add time support
 
-'''
+"""
 
 import os,sys, tempfile, time, traceback, shutil, json, re, copy
 if __name__ == "__main__":
@@ -206,7 +183,7 @@ class SummaryField:
     def getResults(self):
         fieldResults={'attribute':self.attribute}
         if self.statistics:
-            fieldResults.update(self.getStatistics(self.statistics))
+            fieldResults["statistics"]=self.getStatistics(self.statistics)
         if self.classes:
             classResults=[]
             for i in range(0,len(self.classes)):
@@ -309,7 +286,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                 arcpy.Delete_management(zonalStatsTable)
             #note: may need to make layer in to a Raster
             logger.debug("Executing zonal statistics: %s"%(",".join(statistics.values())))
-            zonalStatsTable = arcpy.sa.ZonalStatisticsAsTable(zoneGrid, "VALUE", arcpy.Raster(layer.dataSource), zonalStatsTable, "DATA", ",".join(statistics.values()))
+            zonalStatsTable = arcpy.sa.ZonalStatisticsAsTable(zoneGrid, "VALUE", arcpy.Raster(layer.dataSource), zonalStatsTable, "DATA", "ALL")
             del zoneGrid
 
             totalCount=0
@@ -318,7 +295,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                 for row in rows:
                     totalCount+=row.COUNT
                     for statistic in statistics:
-                        results["statistics"][statistic]=row.getValue(statistics[statistic])
+                        results["statistics"][statistic]=row.getValue(statistic.upper())
                     break #should only have one row
                 del row
             del rows,zonalStatsTable
@@ -360,7 +337,8 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                     diffFields = set(summaryFields.keys()).difference(fieldList)
                     if diffFields:
                         raise ValueError("FIELD_NOT_FOUND: Fields do not exist in layer %s: %s"%(layer.name,",".join([str(fieldName) for fieldName in diffFields])))
-                    results["attributes"]=[]
+                    if not promoteValueResults:
+                        results["attributes"]=[]
 
                 count=0
                 rows = arcpy.SearchCursor(clipGrid, "", "")
@@ -483,7 +461,7 @@ def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages):
             for summaryField in intersectionSummaryFields:
                 summaryFieldResult={"attribute":summaryField}
                 if intersectionSummaryFields[summaryField].statistics:
-                    summaryFieldResult.update(intersectionSummaryFields[summaryField].getStatistics(intersectionSummaryFields[summaryField].statistics))
+                    summaryFieldResult["statistics"]=intersectionSummaryFields[summaryField].getStatistics(intersectionSummaryFields[summaryField].statistics)
 
                 else:
                     collatedResults=[]
@@ -599,7 +577,8 @@ def tabulateMapServices(srcFC,config,projectionWKID,messages):
     if not srcFC.numFeatures:
         raise Exception("INVALID INPUT: no features in input")
 
-    results["units"]="hectares" #always
+    results["area_units"]="hectares" #always
+    results["linear_units"]="kilometers" #always
     results["sourceGeometryType"]=srcFC.geometryType.lower().replace("polyline","line")
     results["sourceFeatureCount"]=srcFC.numFeatures
     if srcFC.geometryType in ["Polygon","Polyline"]:
