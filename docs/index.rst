@@ -10,6 +10,10 @@ These geoprocessing tools were created to help support spatial analysis and othe
 
 
 These tools are intended to be deployed as geoprocessing services on an ArcGIS Server that also hosts map services (their data must be hosted locally).
+Within Data Basin, these services are accessed via server middleware to route to and control the number of jobs per
+ArcGIS server.  Custom-built client code (HTML/JS/CSS) is used to provide the user interface to these tools, and manages
+generation of input parameters, and display of output results.
+
 However, most of the internal functions only rely on arcpy and access to the input data, and thus could be executed from
 other environments.
 
@@ -33,7 +37,7 @@ Supporting modules:
 
 Requirements
 ============
-* ArcGIS Server 10.0 to 10.1
+* ArcGIS Server 10.0 to 10.1, including spatial analyst extension
 * Published map services containing data to be operated against
 
 
