@@ -1,10 +1,8 @@
 """
-This script is used by the ArcGIS 10.0 toolbox
+This script is used by the ArcGIS 10.0 toolbox to execute the tabulate tool.
 """
 
 from tabulate import *
-
-
 messages = MessageHandler(logger=logger)
 srcFC=FeatureClassWrapper(FeatureSetConverter.createFeatureClass(arcpy.GetParameterAsText(0)))
 config=json.loads(arcpy.GetParameterAsText(1))

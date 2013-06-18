@@ -1,5 +1,5 @@
 """
-ArcGIS 10.1 Python Toolbox
+ArcGIS 10.1 Python Toolbox for geoprocessing tools
 """
 
 

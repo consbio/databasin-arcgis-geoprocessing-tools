@@ -1,14 +1,11 @@
-##Script Name: FeatureSetConverter.py
-##Version: ArcGIS 10.0
-##Description: 
-##Provides converter function to convert a featureSet into a featureClass
-##Call the function createFeatureClass(featureSet) with the string containing featureSet JSON
-##Returns in memory copy of feature class
-##Created By: Brendan Ward
-##Date: 3/7/2012
+"""
+Converts a featureset in JSON into a feature class in memory
+"""
+
 
 import arcpy,os,json
 arcpy.env.overwriteOutput =True
+
 
 ################# Globals ###########################
 esriFieldTypesMap=dict()
@@ -22,7 +19,16 @@ esriFieldTypesMap["esriFieldTypeDouble"]="DOUBLE"
 esriFieldTypesMap["esriFieldTypeDate"]="DATE"
 esriFieldTypesMap["esriFieldTypeOID"]="LONG"
 
+
+
 def getFeatureGeometry(geomType,geometry):
+    """
+    Extract geometry from featureset JSON, and convert into geometry representation required for feature class.
+
+    :param geomType: ArcGIS JSON geometry type: esriGeometryPoint, esriGeometryMultipoint, esriGeometryPolyline, esriGeometryPolygon
+    :param geometry: the geometry object extracted from JSON
+    """
+
     if geomType=="esriGeometryPoint":
         return arcpy.Point(geometry["x"],geometry["y"])
     elif geomType=="esriGeometryMultipoint":
@@ -51,8 +57,18 @@ def getFeatureGeometry(geomType,geometry):
         raise Exception("GEOMETRY_TYPE_NOT_IMPLEMENTED: This geometry type is not implemented %s"%(geomType))
 
 
-#Main function
+
 def createFeatureClass(featureSet,name="drawingFC"):
+    """
+    Create an in-memory feature class from a featureset JSON.
+
+    :param featureSet: the featureset JSON string.
+    :param name: name of output feature class (always in memory)
+
+    .. note:: the original feature IDs (FID / OBJECTID) are not preserved in feature class, as they are built up fresh
+        during construction of feature class.
+    """
+
     srcFeatureJSON=json.loads(featureSet)
     geomType=srcFeatureJSON["geometryType"]
     srcFeatures=srcFeatureJSON["features"]

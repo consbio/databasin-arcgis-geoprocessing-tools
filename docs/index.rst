@@ -22,6 +22,14 @@ Refer to the specific tools below for more information:
 
 
 
+Supporting modules:
+
+.. toctree::
+    :maxdepth: 1
+
+    logging_messaging
+    utilities
+
 
 Requirements
 ============
