@@ -19,6 +19,14 @@ class ToolLogFileStream:
 
 
 class ToolLogger(logging.Logger):
+    """
+    Extends builtin python logger to provide logging capabilities for geoprocessing tools.  Writes to the log file
+    specified in settings.py (LOG_FILENAME).  Will roll the logfile each day.
+
+    .. note:: does not prune old log files.
+
+    """
+
     def __init__(self, name):
         logging.Logger.__init__(self, name)
         self.handler = logging.StreamHandler(ToolLogFileStream(settings.LOG_FILENAME))
@@ -34,12 +42,13 @@ class ToolLogger(logging.Logger):
             except IOError:
                 pass #Ignore IO exceptions
 
-        #TODO: prune old log files
-
     @staticmethod
     def getLogger(name):
         """
-        Example: ToolLogger.getLogger("TestLogger")
+        Return logger for a particular context name (typically the name of the main geoprocessing tool being executed).
+        Logging level is specified in settings.py (LOG_LEVEL).
+
+        :param name: Name of the context for logging
         """
 
         logging.setLoggerClass(ToolLogger)
