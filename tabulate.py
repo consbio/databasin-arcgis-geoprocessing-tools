@@ -7,6 +7,9 @@ TODO:
 - add time support
 
 """
+from tool_logging import ToolLogger
+logger = ToolLogger.getLogger("tabulate")
+logger.debug("Tabulate started")
 
 import os,sys, tempfile, time, traceback, shutil, json, re, copy
 if __name__ == "__main__":
@@ -18,7 +21,7 @@ import arcpy
 from utilities import FeatureSetConverter, ProjectionUtilities
 import settings
 from utilities.PathUtils import TemporaryWorkspace,getMXDPathForService
-from tool_logging import ToolLogger
+#from tool_logging import ToolLogger
 from messaging import MessageHandler
 
 
@@ -28,7 +31,7 @@ arcpy.env.pyramid="NONE"
 arcpy.env.rasterStatistics="NONE" #we will calculate these manually as required
 
 #Setup globals
-logger = ToolLogger.getLogger("tabulate")
+#logger = ToolLogger.getLogger("tabulate")
 TEMP_WORKSPACE=TemporaryWorkspace()
 
 class FeatureClassWrapper:
@@ -38,20 +41,36 @@ class FeatureClassWrapper:
 
     def __init__(self,featureClass):
         self.featureClass=featureClass
-        fcPath=str(featureClass)
-        if fcPath.count("IN_MEMORY/"): #need to persist or it will fail during projection steps
-            newFCPath=os.path.normpath(fcPath.replace("IN_MEMORY",TEMP_WORKSPACE.getGDB()))
-            if arcpy.Exists(newFCPath):
-                arcpy.Delete_management(newFCPath)
-            arcpy.CopyFeatures_management(featureClass,newFCPath)
-            self.featureClass=newFCPath
-        self.info=arcpy.Describe(self.featureClass)
-        self.geometryType=self.info.shapeType
-        self.spatialReference=self.info.spatialReference
-        self.numFeatures=int(arcpy.GetCount_management(featureClass).getOutput(0))
         self.name=os.path.split(self.featureClass)[1]
+        #internal attributes, only fetch as necessary since initial lookup time may be slow
+        self._info=None
+        self._geometryType=None
+        self._spatialReference=None
+        self._numFeatures=None
         self._prjLUT=dict()
-        self._prjCache={"%s_%s" % (self.name,self._getProjID(self.spatialReference)):featureClass}
+        self._prjCache=dict()
+
+
+    def getCount(self):
+        if self._numFeatures is None:
+            self._numFeatures=int(arcpy.GetCount_management(self.featureClass).getOutput(0))
+        return self._numFeatures
+
+    #Can also get from cursor - what do we get first?
+    def getGeometryType(self):
+        if self._geometryType is None:
+            self._geometryType=self._getInfo().shapeType
+        return self._geometryType
+
+    def getSpatialReference(self):
+        if self._spatialReference is None:
+            self._spatialReference = self._getInfo().spatialReference
+        return self._spatialReference
+
+    def _getInfo(self):
+        if self._info is None:
+            self._info=arcpy.Describe(self.featureClass)
+        return self._info
 
     def _getProjID(self,spatialReference):
         key=spatialReference.factoryCode
@@ -63,20 +82,37 @@ class FeatureClassWrapper:
 
     def project(self,targetSpatialReference):
         projKey = "%s_%s" % (self.name,self._getProjID(targetSpatialReference))
+
         if not self._prjCache.has_key(projKey):
+            fcPath=str(self.featureClass)
+            if fcPath.count("IN_MEMORY/"): #need to persist or it will fail during projection steps
+                logger.debug("Persisting feature class to temporary geodatabase")
+                newFCPath=os.path.normpath(fcPath.replace("IN_MEMORY",TEMP_WORKSPACE.getGDB()))
+                if arcpy.Exists(newFCPath):
+                    arcpy.Delete_management(newFCPath)
+                arcpy.CopyFeatures_management(self.featureClass,newFCPath)
+                self.featureClass=newFCPath
+
+            if not self._prjCache:
+                #cache current projection
+                existingPrjKey="%s_%s" % (self.name,self._getProjID(self.getSpatialReference()))
+                self._prjCache[existingPrjKey]=self.featureClass
+                if projKey==existingPrjKey:
+                    return self.featureClass
+
             targetProjLabel = targetSpatialReference.factoryCode or targetSpatialReference.exporttostring()
             projFCPath=os.path.join(TEMP_WORKSPACE.getGDB(),projKey)
             if arcpy.Exists(projFCPath):
                 arcpy.Delete_management(projFCPath)
-            geoTransform=ProjectionUtilities.getGeoTransform(self.spatialReference, targetSpatialReference)
+            geoTransform=ProjectionUtilities.getGeoTransform(self.getSpatialReference(), targetSpatialReference)
             logger.debug("Projecting %s to %s using transform %s"%(self.name,targetProjLabel,geoTransform))
             self._prjCache[projKey] = arcpy.Project_management(self.featureClass, projFCPath,targetSpatialReference,geoTransform).getOutput(0)
         return self._prjCache[projKey]
 
-    def getquantityAttribute(self):
-        if self.geometryType=="Polyline":
+    def getQuantityAttribute(self):
+        if self.getGeometryType()=="Polyline":
             return "length"
-        elif self.geometryType=="Polygon":
+        elif self.getGeometryType()=="Polygon":
             return "area"
         return None
 
@@ -85,9 +121,9 @@ class FeatureClassWrapper:
         Return area / length multiplication factor to calculate hectares / kilometers for the specified projection
         """
 
-        if self.geometryType=="Polyline":
+        if self.getGeometryType()=="Polyline":
             return ProjectionUtilities.getProjUnitFactors(targetSpatialReference)[0]
-        elif self.geometryType=="Polygon":
+        elif self.getGeometryType()=="Polygon":
             return ProjectionUtilities.getProjUnitFactors(targetSpatialReference)[1]
         return 0
 
@@ -95,12 +131,12 @@ class FeatureClassWrapper:
         """
         Return total area or length, if geometry type supports it, in the target projection
         """
-        if not self.geometryType in ["Polygon","Polyline"]:
+        if not self.getGeometryType() in ["Polygon","Polyline"]:
             return None
         if not targetSpatialReference:
-            targetSpatialReference=self.spatialReference
+            targetSpatialReference=self.getSpatialReference()
         projFC=self.project(targetSpatialReference)
-        quantityAttribute=self.getquantityAttribute()
+        quantityAttribute=self.getQuantityAttribute()
         rows=arcpy.SearchCursor(projFC)
         total=sum([getattr(row.shape,quantityAttribute) for row in rows]) * self.getGeometryConversionFactor(targetSpatialReference)
         del rows
@@ -375,6 +411,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
 
 def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages):
+    logger.debug("tabulateFeatureLayer: %s"%(layer.name))
     #arcpy.env.workspace = TEMP_WORKSPACE.getGDB()
     arcpy.env.cartographicCoordinateSystem = spatialReference
     arcpy.env.extent=None
@@ -383,30 +420,34 @@ def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
     #select features from layer using target projection and where clause (if provided)
     selLyr = arcpy.MakeFeatureLayer_management(layer, "selLyr", layerConfig.get("where","")).getOutput(0)
+    logger.debug("Selected features from target layer given where clause")
 
     #select by location; this is done in the projection of the target FC
     arcpy.SelectLayerByLocation_management(selLyr, "INTERSECT", srcFC.featureClass)
+    logger.debug("Selected features from target layer that intersect area of interest")
     featureCount = int(arcpy.GetCount_management(selLyr).getOutput(0))
+    logger.debug("Found %s intersecting features"%(featureCount))
 
     if featureCount>0:
         selFC = "IN_MEMORY/selFC"
         #Selected features must be copied into new feature class for projection step, otherwise it uses the entire dataset (lame!)
+        logger.debug("Copying selected features to in-memory feature class")
         arcpy.CopyFeatures_management(selLyr,selFC)
 
         #project the selection to target projection, and then intersect with source (in target projection)
         geoTransform=ProjectionUtilities.getGeoTransform(arcpy.Describe(layer.dataSource).spatialReference, spatialReference)
-        logger.debug("Projected selected features from %s"%(layer.name))
+        logger.debug("Projecting selected features from %s"%(layer.name))
         projFC = FeatureClassWrapper(arcpy.Project_management(selFC, "projFC", spatialReference,geoTransform).getOutput(0))
         logger.debug("Intersecting selected features with area of interest")
         intFC = FeatureClassWrapper(arcpy.Intersect_analysis([srcFC.project(spatialReference), projFC.featureClass], "IN_MEMORY/" + "intFC").getOutput(0))
 
         featureCount = int(arcpy.GetCount_management(intFC.featureClass).getOutput(0))
         if featureCount>0:
-            intersectionQuantityAttribute = intFC.getquantityAttribute()
+            intersectionQuantityAttribute = intFC.getQuantityAttribute()
             intersectionConversionFactor=intFC.getGeometryConversionFactor(spatialReference)
             intersectionSummaryFields=dict([(summaryField["attribute"],SummaryField(summaryField,intersectionQuantityAttribute is not None)) for summaryField in layerConfig.get("attributes",[])])
 
-            intersectedQuantityAttribute = projFC.getquantityAttribute()
+            intersectedQuantityAttribute = projFC.getQuantityAttribute()
             intersectedConversionFactor=projFC.getGeometryConversionFactor(spatialReference)
             intersectedSummaryFields=copy.deepcopy(intersectionSummaryFields)
 
@@ -417,6 +458,7 @@ def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages):
                     raise ValueError("FIELD_NOT_FOUND: Fields do not exist in layer %s: %s"%(layer.name,",".join([str(fieldName) for fieldName in diffFields])))
                 results["attributes"]=[]
 
+            logger.debug("Tallying intersection results")
             #tally results for intersection
             rows = arcpy.SearchCursor(intFC.featureClass) #TODO: may want to pare this down to SHAPE and summary fields only
             total=0
@@ -432,11 +474,12 @@ def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages):
                     intersectionSummaryFields[summaryField].addRecord(row.getValue(summaryField),geometryCount,quantity)
             del row,rows
 
-            results["intersectionGeometryType"]=intFC.geometryType.lower() if intFC.geometryType in ["Polygon","Point"] else "line"
+            results["intersectionGeometryType"]=intFC.getGeometryType().lower().replace("polyline","line")
             results["intersectionCount"]=count
             if intersectionQuantityAttribute:
                 results["intersectionQuantity"]=total
 
+            logger.debug("Tallying intersected feature results")
             #tally results for intersected features
             rows = arcpy.SearchCursor(projFC.featureClass)
             total=0
@@ -452,7 +495,7 @@ def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages):
                     intersectedSummaryFields[summaryField].addRecord(row.getValue(summaryField),geometryCount,quantity)
             del row,rows
 
-            results["intersectedGeometryType"]=projFC.geometryType.lower().replace("polyline","line")
+            results["intersectedGeometryType"]=projFC.getGeometryType().lower().replace("polyline","line")
             results["intersectedCount"]=count
             if intersectedQuantityAttribute:
                 results["intersectedQuantity"]=total
@@ -574,14 +617,14 @@ def tabulateMapServices(srcFC,config,projectionWKID,messages):
     spatialReference.create()
     arcpy.env.cartographicCoordinateSystem = spatialReference #TODO: confirm we want this set everywhere
 
-    if not srcFC.numFeatures:
+    if not srcFC.getCount():
         raise Exception("INVALID INPUT: no features in input")
 
     results["area_units"]="hectares" #always
     results["linear_units"]="kilometers" #always
-    results["sourceGeometryType"]=srcFC.geometryType.lower().replace("polyline","line")
-    results["sourceFeatureCount"]=srcFC.numFeatures
-    if srcFC.geometryType in ["Polygon","Polyline"]:
+    results["sourceGeometryType"]=srcFC.getGeometryType().lower().replace("polyline","line")
+    results["sourceFeatureCount"]=srcFC.getCount()
+    if results["sourceGeometryType"] != "point":
         results["sourceFeatureQuantity"]=srcFC.getTotalAreaOrLength(spatialReference)
     results["services"]=[]
 

@@ -89,6 +89,10 @@ def getGeoTransform(srcSR,targetSR):
 
     .. note:: limited to the geographic coordinate systems supported by getWGS84GeoTransform
     """
+
+    if srcSR.factoryCode and srcSR.factoryCode==targetSR.factoryCode:
+        return ""
+
     srcGCS=getGCS(srcSR)
     targetGCS=getGCS(targetSR)
     if srcGCS==targetGCS:
