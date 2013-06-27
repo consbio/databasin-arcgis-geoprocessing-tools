@@ -538,14 +538,11 @@ def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages):
             arcpy.Delete_management("projFC")
 
         else:
-            print "No features intersected for this layer: %s"%(layer.name)
             logger.debug("No Features intersected for this layer: %s" % (layer.name))
             results["intersectionCount"]=0
             results["intersectedCount"]=0 #no point in tallying features we don't have from intersection
 
     else:
-        #TODO
-        print "No Features selected for this layer: %s"%(layer.name)
         logger.debug("No Features selected for this layer: %s" % (layer.name))
         results["intersectionCount"]=0
         results["intersectedCount"]=0
