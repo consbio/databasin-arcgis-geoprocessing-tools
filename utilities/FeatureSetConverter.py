@@ -92,7 +92,7 @@ def createFeatureClass(featureSet,name="drawingFC"):
     for fieldJSON in fieldsJSON:              
         fieldType=esriFieldTypesMap[fieldJSON["type"]]               
         name=fieldJSON["name"]
-        alias=fieldJSON["alias"]
+        alias=fieldJSON.get("alias",name)
         fieldLength=""
         fieldPrecision=""
         fieldScale=""
