@@ -196,3 +196,9 @@ def test_tabulateMapServices_point_aoi():
     assert layerResults['statistics']['MAX']==313.635009765625
     assert layerResults['statistics']['MIN']==292.135009765625
     assert layerResults['statistics']['MEAN']==303.468994140625
+
+
+
+
+test_tabulateMapServices_polygon_aoi()
+test_tabulateMapServices_line_aoi()
