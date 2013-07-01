@@ -50,7 +50,6 @@ class TemporaryWorkspace:
             if not arcpy.Exists(self.gdb):
                 path, gdbName = os.path.split(self.gdb)
                 arcpy.CreateFileGDB_management(path, gdbName)
-        print self.gdb,os.path.exists(self.gdb)
         return self.gdb
 
     def delete(self):
@@ -71,7 +70,6 @@ class TemporaryWorkspace:
             except OSError, e:
                 if (time.time() - startTime) > timeout:
                     arcpy.AddMessage("Error removing temporary directory : %s" % (str(e)))
-                    print("Removing directory failed: " + self.tmpDir)
                     return False
                 if i == 0:
                     arcpy.AddMessage("Error removing directory %s. Will retry for up to %d seconds." % (self.tmpDir,timeout))
