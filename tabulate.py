@@ -189,7 +189,7 @@ class SummaryField:
         #>=lower value and <upper
         for classIndex in range(0,len(self._classRanges)):
             classRange=self._classRanges[classIndex]
-            if value>=classRange[0] and value<classRange[1]:
+            if value>=classRange[0] and value<classRange[1]: #TODO: may need to test for <= to last class upper value
                 return classIndex
         return None
 
@@ -260,17 +260,22 @@ def getGridCount(grid, summaryField):
     Return total count of pixels, and count by summary field if passed in
     '''
 
-    rows = arcpy.SearchCursor(grid)
     totalCount = 0
     summary = dict()
-    for row in rows:
-        totalCount += row.COUNT
-        if summaryField:
-            summaryValue = row.getValue(summaryField)
-            if not summary.has_key(summaryValue):
-                summary[summaryValue] = 0
-            summary[summaryValue] += row.COUNT
-    del row, rows
+
+    try:
+        #this will fail if there is no attribute table (e.g., all pixels are NODATA)
+        rows = arcpy.SearchCursor(grid)
+        for row in rows:
+            totalCount += row.COUNT
+            if summaryField:
+                summaryValue = row.getValue(summaryField)
+                if not summary.has_key(summaryValue):
+                    summary[summaryValue] = 0
+                summary[summaryValue] += row.COUNT
+        del row, rows
+    except:
+        pass
     return totalCount, summary
 
 
@@ -292,6 +297,9 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
     lyrInfo = arcpy.Describe(layer.dataSource)
     projFC=srcFC.project(lyrInfo.spatialReference)
 
+    #TODO: check against extents, and skip out from here if there is no overlap of extent
+
+
     arcpy.env.workspace=TEMP_WORKSPACE.getDirectory()
     try:
         arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getDirectory() # this completely crashes the server container, somehow scratchWorkspace is getting corrupted and cannot be set
@@ -301,7 +309,22 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
     logger.debug("Creating area of interest raster")
     aoiGrid = "aoiGrid"
-    arcpy.FeatureToRaster_conversion(projFC, arcpy.Describe(projFC).OIDFieldName, aoiGrid, lyrInfo.meanCellHeight)
+    #arcpy.Describe(projFC).OIDFieldName
+    arcpy.FeatureToRaster_conversion(projFC, "OBJECTID", aoiGrid, lyrInfo.meanCellHeight)
+
+    #Note: this will fail for polygons that are much smaller than the cell size.  A grid will be produced that has all nodata
+    #Possible solution, convert to points (inside), then convert these to raster.  Also seems to fail more often if going to a GDB raster than regular raster
+    arcpy.BuildRasterAttributeTable_management(aoiGrid)
+    aoiCellCount = getGridCount(aoiGrid, None)[0]
+    if not aoiCellCount:
+        logger.debug("Could not create aoiGrid for polygons, falling back to points instead")
+        tmpPoints="IN_MEMORY/tmpPoints"
+        arcpy.FeatureToPoint_management(projFC, tmpPoints,"INSIDE")
+        arcpy.FeatureToRaster_conversion(tmpPoints, "OBJECTID", aoiGrid, lyrInfo.meanCellHeight)
+        arcpy.BuildRasterAttributeTable_management(aoiGrid)
+        aoiCellCount = getGridCount(aoiGrid, None)[0]
+        del tmpPoints
+
 
     #Cell area is based on the projection: uses native projection of clipGrid if it is a projected system, otherwise project cell area to target spatialReference
     cellArea, projectionType = ProjectionUtilities.getCellArea(layer.dataSource, spatialReference)
@@ -382,7 +405,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                     count+=row.COUNT
                     for summaryField in summaryFields:
                         summaryFields[summaryField].addRecord(row.getValue(summaryField),row.COUNT,row.COUNT*cellArea)
-                del row,rows
+                del rows
                 results["intersectionPixelCount"]=count
 
                 if promoteValueResults:
@@ -397,7 +420,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
     results["pixelArea"] = cellArea
     results["projectionType"] = projectionType
-    results["sourcePixelCount"] = getGridCount(aoiGrid, None)[0]
+    results["sourcePixelCount"] = aoiCellCount #getGridCount(aoiGrid, None)[0]
     results["intersectionQuantity"] = float(results["sourcePixelCount"]) * cellArea
     results["geometryType"] = "pixel"
 
