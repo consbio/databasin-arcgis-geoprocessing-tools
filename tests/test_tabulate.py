@@ -200,5 +200,13 @@ def test_tabulateMapServices_point_aoi():
 
 
 
-test_tabulateMapServices_polygon_aoi()
-test_tabulateMapServices_line_aoi()
+#test_tabulateMapServices_polygon_aoi()
+#test_tabulateMapServices_line_aoi()
+
+messages = MessageHandler(logger=logger)
+arcpy.Delete_management("IN_MEMORY/")
+srcFC = FeatureClassWrapper(createFeatureClass("""{"features":[{"attributes":[],"geometry":{"rings":[[[-9731974.656048566,1742264.5836582542],[-9594388.005135257,1767947.4251620723],[-9624962.816449326,1700682.8402711204],[-9731974.656048566,1719027.7270595618],[-9731974.656048566,1742264.5836582542]]],"spatialReference":{"wkid":102100}}}],"geometryType":"esriGeometryPolygon","spatialReference":{"wkid":102100},"displayFieldName":"","fieldAliases":{},"fields":[]}"""))
+config=json.loads("""{"services": [{"layers": [{"layerID": 0,"statistics":["MIN","MAX","MEAN","STD","SUM"]}], "serviceID": "carbon_test"}]}""")
+results = tabulateMapServices(srcFC,config,102003,messages)
+print results
+print json.dumps(results,indent=1)
