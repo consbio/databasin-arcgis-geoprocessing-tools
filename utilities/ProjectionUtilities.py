@@ -121,12 +121,17 @@ def projectExtent(extent,tempGDB,srcSR,targetSR):
     :param srcSR: source ArcGIS spatial reference object
     :param targetSR: target ArcGIS spatial reference object
     """
+
     array=arcpy.Array()
     array.add(arcpy.Point(extent.XMin,extent.YMin))
+    array.add(arcpy.Point(extent.XMin,extent.YMax))
+    array.add(arcpy.Point(extent.XMax,extent.YMin))
     array.add(arcpy.Point(extent.XMax,extent.YMax))
     fc=arcpy.Multipoint(array,srcSR)
     projFC=arcpy.Project_management(fc,os.path.join(tempGDB,"tempProj"),targetSR,getGeoTransform(srcSR,targetSR),srcSR).getOutput(0)
-    return arcpy.Describe(projFC).extent
+    extent = arcpy.mapping.Layer(projFC).getExtent()
+    arcpy.Delete_management(projFC)
+    return extent
 
 
 def getCellArea(grid,targetSR):
@@ -175,4 +180,17 @@ def createCustomAlbers(extent):
     lat2=extent.YMax - inset
     assert centralMeridian>-180 and centralMeridian<180 and lat1>-90 and lat1<90 and lat2>-90 and lat2<90
     spatialReference.loadFromString(u"PROJCS['Custom_Albers_WGS84',GEOGCS['GCS_WGS_1984',DATUM['D_WGS_1984',SPHEROID['WGS_1984',6378137.0,298.257223563]],PRIMEM['Greenwich',0.0],UNIT['Degree',0.0174532925199433]],PROJECTION['Albers'],PARAMETER['False_Easting',0.0],PARAMETER['False_Northing',0.0],PARAMETER['Central_Meridian',%.1f],PARAMETER['Standard_Parallel_1',%.1f],PARAMETER['Standard_Parallel_2',%.1f],PARAMETER['Latitude_Of_Origin',0.0],UNIT['Meter',1.0]];-22505900 -5535700 200107510.802523;-100000 10000;-100000 10000;0.001;0.001;0.001;IsHighPrecision"%(centralMeridian,lat1,lat2))
+    return spatialReference
+
+
+def getSpatialReferenceFromWKID(WKID):
+    """
+    Returns a spatial reference object for WKID
+
+    :param WKID: ESRI Well Known ID
+    :return: spatial reference object
+    """
+    spatialReference=arcpy.SpatialReference()
+    spatialReference.factoryCode=4326
+    spatialReference.create()
     return spatialReference

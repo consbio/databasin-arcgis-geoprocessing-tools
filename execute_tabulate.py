@@ -6,6 +6,5 @@ from tabulate import *
 messages = MessageHandler(logger=logger)
 srcFC=FeatureClassWrapper(FeatureSetConverter.createFeatureClass(arcpy.GetParameterAsText(0)))
 config=json.loads(arcpy.GetParameterAsText(1))
-targetProjectionWKID=arcpy.GetParameter(2)
-results = json.dumps(tabulateMapServices(srcFC,config,targetProjectionWKID,messages))
-arcpy.SetParameter(3,results)
+results = json.dumps(tabulateMapServices(srcFC,config,messages))
+arcpy.SetParameter(2,results)
