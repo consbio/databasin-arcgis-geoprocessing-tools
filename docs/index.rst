@@ -8,6 +8,8 @@ Data Basin ArcGIS Geoprocessing Tools
 
 These geoprocessing tools were created to help support spatial analysis and other operations in `Data Basin <http://databasin.org/>`_.
 
+Source code available in `Bitbucket <https://bitbucket.org/databasin/databasin_arcgis_geoprocessing_tools/>`_.
+
 
 These tools are intended to be deployed as geoprocessing services on an ArcGIS Server that also hosts map services (their data must be hosted locally).
 Within Data Basin, these services are accessed via server middleware to route to and control the number of jobs per

@@ -7,13 +7,27 @@ Tabulate Tool
 This tool tabulates various summary values for feature or raster datasets within an area of interest.  The area of
 interest can be represented as one or more points, lines, or polygons (limited to one type of geometry per analysis).
 
-For raster analysis, the area of interest is converted to a raster dataset with the same resolution as the target raster
+This tool creates a custom Albers Equal Area (WGS84 datum) projection centered over the area of interest to use as the
+standard throughout processing.  This helps ensure that areas are comparable between source features, target features, and target rasters.
+
+For raster analysis, the tool uses one of two methods:
+
+1) approximate: the area of interest is converted to a raster dataset with the same resolution as the target raster
 (pixel calculations are not based on partial pixels); thus it is necessary to compare the area of interest in pixels against the
-summary area returned for the target raster.  Pixel areas are based on the native projection area of the target raster (assumed to be more accurate), if
-it is in a projected spatial reference; otherwise pixel areas are based on the area of a pixel within the target projection.
+summary area returned for the target raster.  This method is used when the area of interest is represented by points or
+the number of pixels in the extent of the area of interest is higher than optimal for precise method (>50,000 pixels).
+
+2) precise: the raster is extracted to the extent of the area of interest in its native projection, and then a fishnet
+feature class is created that matches it.  This fishnet is then intersected with the area of interest, and proportional
+areas of overlap area calculated as weights for each pixel.  These weights can then used for either area weighted statistics,
+with the assumption that values within the pixels are equally distributed and can be subdivided (new value = proportion of
+overlap * original value).  This assumption may not be appropriate in all cases, so exercise caution when interpreting
+the weighted results.
 
 
-**Available summaries include:**
+
+Available Summary Methods
+=========================
 
 *Feature layers*
 
@@ -23,13 +37,24 @@ it is in a projected spatial reference; otherwise pixel areas are based on the a
 * area or length and count of features by classes of a continuous attribute
 * statistics of a continuous attribute inside area of interest: MIN, MAX, SUM, MEAN
 
-*Faster layers*
+*Raster layers*
 
 * area and pixel count of area of interest in resolution of target raster
 * area and pixel count of raster inside area of interest
 * area and pixel count of unique values of a raster or raster attribute inside area of interest
 * area and pixel count of classes of a continuous raster or raster attribute inside area of interest
-* statistics of raster or continuous attribute inside area of interest. Valid statistics are: MIN, MAX, SUM, MEAN, STD (standard deviation)
+* statistics of raster or continuous attribute inside area of interest. Valid statistics are: MIN, MAX, SUM, MEAN, STD (standard deviation).
+
+    Can include these statistics if precise method is used and area of interest is a polygon:
+
+    * WEIGHTED_MIN: min of original pixel values * proportion overlap per pixel
+    * WEIGHTED_MAX: max of original pixel values * proportion overlap per pixel
+    * WEIGHTED_SUM: sum of original pixel values * proportion overlap per pixel
+    * WEIGHTED_MEAN: mean of original pixel values * proportion overlap per pixel
+    * WEIGHTED_STD: standard deviation of original pixel values * proportion overlap per pixel
+
+    Can include WEIGHTED_MEAN (sum of original pixel values * proportion of area of interest in each pixel) if
+    precise method is used and area of interest is a line.
 
 
 Inputs
@@ -113,7 +138,7 @@ Inputs
         {"layerID":5, "classes":[ [0,300],[300,310],[310,400] ]}
     * To return summary statistics of raster, simply include statistics at layer level::
 
-        {"layerID":5, "statistics":["MIN","MAX","MEAN","SUM"]}
+        {"layerID":5, "statistics":["MIN","MAX","MEAN","SUM","STD"]}
     * Attribute-level summaries are same as above
 
 
@@ -243,9 +268,10 @@ During execution, the tool will add a progress message for each completed layer 
                         {
                             #a categorical raster, will be summarized on unique values
                             "layerID": 3,
-                            "projectionType": "native",
-                            #native=areas are based on the native projection of target raster, target=areas are based on target projection
-                            "intersectionPixelCount": 124796,
+                            "method": "approximate",
+                            #approximate: area of interest represented as a grid, no area weighting.  precise: area of
+                            #interest is a polygon representation of grid, with area weighting.
+                            "intersectionCount": 124796,
                             "sourcePixelCount": 124796,
                             "intersectionQuantity": 11231.639999999999,
                             "pixelArea": 0.089999999999999997,
@@ -283,9 +309,10 @@ During execution, the tool will add a progress message for each completed layer 
                             "layerID": 5,
                             "pixelArea": 0.089999999999999997,
                             "geometryType": "pixel",
-                            "projectionType": "native",
+                            "method": "approximate",
                             "sourcePixelCount": 124796,
-                            "intersectionQuantity": 11231.639999999999
+                            "intersectionQuantity": 11231.820000000002,
+                            "intersectionCount": 124798
                         },
                         {
                             "layerID": 5,
@@ -308,23 +335,25 @@ During execution, the tool will add a progress message for each completed layer 
                                 }
                             ],
                             "geometryType": "pixel",
-                            "projectionType": "native",
+                            "method": "approximate",
                             "sourcePixelCount": 124796,
-                            "intersectionQuantity": 11231.639999999999
+                            "intersectionQuantity": 11231.820000000002,
+                            "intersectionCount": 124798
                         },
                         {
                             "layerID": 5,
                             "pixelArea": 0.089999999999999997,
                             "statistics": {
+                                "STD": 11.514897346496582,
                                 "MAX": 378.656494140625,
-                                "SUM": 37146168.0,
+                                "SUM": 37146864.0,
                                 "MIN": 271.205322265625,
-                                "MEAN": 297.65512084960937
+                                "MEAN": 297.65594482421875
                             },
                             "geometryType": "pixel",
-                            "projectionType": "native",
-                            "sourcePixelCount": 124796,
-                            "intersectionQuantity": 11231.639999999999
+                            "sourcePixelCount": 124798,
+                            "intersectionQuantity": 11231.820000000002,
+                            "method": "approximate"
                         }
                     ]
                 }

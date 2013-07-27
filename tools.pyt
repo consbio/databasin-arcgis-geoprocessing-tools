@@ -25,8 +25,6 @@ class TabulateTool(object):
                         parameterType="Required",direction="Input"),
         arcpy.Parameter(displayName="Target Configuration (JSON)",name="configJSON",datatype="String",parameterType="Required",
                         direction="Input"),
-        arcpy.Parameter(displayName="Target Projection (WKID)",name="targetProjectionWKID",datatype="Long",
-                        parameterType="Required",direction="Input"),
         arcpy.Parameter(displayName="Results (JSON)",name="resultsJSON",datatype="String",
                         parameterType="Derived",direction="Output")]
 
@@ -35,8 +33,6 @@ class TabulateTool(object):
         messageHandler = MessageHandler(logger=logger,messages=messages)
         srcFC=FeatureClassWrapper(FeatureSetConverter.createFeatureClass(parameters[0].valueAsText))
         config=json.loads(parameters[1].valueAsText)
-        targetProjectionWKID=parameters[2].value
-        results = json.dumps(tabulateMapServices(srcFC,config,targetProjectionWKID,messageHandler))
-        #arcpy.SetParameter(3,results)
-        parameters[3].value=results
+        results = json.dumps(tabulateMapServices(srcFC,config,messageHandler))
+        parameters[2].value=results
         return

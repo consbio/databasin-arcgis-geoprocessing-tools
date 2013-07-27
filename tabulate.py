@@ -5,6 +5,12 @@ See test_tabulate for example usage.
 
 TODO:
 - add time support
+check out recipe at: http://arcpy.wordpress.com/2012/07/02/retrieving-total-counts/ for counter example
+
+TODOC:
+- changed return values for raster
+- area weighted stuff
+- custom albers projection
 
 """
 from tool_logging import ToolLogger
@@ -49,6 +55,7 @@ class FeatureClassWrapper:
         self._numFeatures=None
         self._prjLUT=dict()
         self._prjCache=dict()
+        self._extentPrjCache=dict()
 
 
     def getCount(self):
@@ -67,6 +74,25 @@ class FeatureClassWrapper:
             self._spatialReference = self._getInfo().spatialReference
         return self._spatialReference
 
+    def getExtent(self,targetSpatialReference=None,projectFeaturesFirst=False):
+        if targetSpatialReference is None:
+            return self._getInfo().extent
+        projKey=self._getProjID(targetSpatialReference)
+        if not self._extentPrjCache.has_key(projKey):
+            #cache existing
+            projectionKey="%s_%s"%(self.name,projKey)
+            if self._prjCache.has_key(projectionKey):
+                #use previously projected version
+                self._extentPrjCache[projKey]=arcpy.mapping.Layer(self._prjCache[projectionKey]).getExtent()
+            elif projectFeaturesFirst:
+                self.project(targetSpatialReference)
+                self._extentPrjCache[projKey]=arcpy.mapping.Layer(self._prjCache[projectionKey]).getExtent()
+            else:
+                self._extentPrjCache[projKey]=ProjectionUtilities.projectExtent(self._getInfo().extent,TEMP_WORKSPACE.getGDB(),
+                                                                            self.getSpatialReference(),targetSpatialReference)
+        return self._extentPrjCache[projKey]
+
+
     def _getInfo(self):
         if self._info is None:
             self._info=arcpy.Describe(self.featureClass)
@@ -75,7 +101,7 @@ class FeatureClassWrapper:
     def _getProjID(self,spatialReference):
         key=spatialReference.factoryCode
         if not key:
-            key="hash%s"%(hash(spatialReference.exporttostring()))
+            key="hash%s"%(hash(spatialReference.exportToString()))
         if not self._prjLUT.has_key(key):
             self._prjLUT[key]=len(self._prjLUT.keys())
         return self._prjLUT[key]
@@ -100,12 +126,13 @@ class FeatureClassWrapper:
                 if projKey==existingPrjKey:
                     return self.featureClass
 
-            targetProjLabel = targetSpatialReference.factoryCode or targetSpatialReference.exporttostring()
+            #targetProjLabel = targetSpatialReference.factoryCode or targetSpatialReference.exportToString()
             projFCPath=os.path.join(TEMP_WORKSPACE.getGDB(),projKey)
             if arcpy.Exists(projFCPath):
                 arcpy.Delete_management(projFCPath)
             geoTransform=ProjectionUtilities.getGeoTransform(self.getSpatialReference(), targetSpatialReference)
-            logger.debug("Projecting %s to %s using transform %s"%(self.name,targetProjLabel,geoTransform))
+            #logger.debug("Projecting %s to %s using transform %s"%(self.name,targetProjLabel,geoTransform))
+            logger.debug("Projecting %s to %s using transform %s"%(self.name,targetSpatialReference.name,geoTransform))
             self._prjCache[projKey] = arcpy.Project_management(self.featureClass, projFCPath,targetSpatialReference,geoTransform).getOutput(0)
         return self._prjCache[projKey]
 
@@ -243,18 +270,77 @@ def getGridClasses(grid, field, classBreaks):
     remapClasses=[]
     for i in range(0,len(classBreaks)):
         classBreak=classBreaks[i]
-        remapClasses.append([classBreak[0],classBreak[1],i])
+        remapClasses.append([classBreak[0],float(classBreak[1])-0.0000001,i]) #this translates to greater than or equal to lower bound and less than upper bound
     arcpy.CalculateStatistics_management(grid)
     reclassGrid = arcpy.sa.Reclassify(grid, field, arcpy.sa.RemapRange(remapClasses), "NODATA")
+    #reclassGrid.save(os.path.join(TEMP_WORKSPACE.getDirectory(),"reclass")) #for testing
     results = dict()
     rows = arcpy.SearchCursor(reclassGrid)
     for row in rows:
         results[row.getValue("Value")] = row.COUNT #value is the class index
-    del row,rows
+    del row,rows,reclassGrid
     return results
 
 
+def getNumpyValueQuantities(values,quantities):
+    """
+    Tallys the quantities for each unique value found in values based on the amount within each pixel
 
+    :param values:  pixel values
+    :param quantities: quantities measured for each pixel
+    :return: dictionary mapping value to count and quantity
+    """
+
+    import numpy
+    flat_values=values.flatten()
+    #flat_quantities=quantities.flatten()
+    results=dict()
+    for value in numpy.unique(flat_values):
+        equals_value = values==value
+        results[value]={
+            "count": int(equals_value.sum()),
+            "quantity": (equals_value * quantities).sum()
+        }
+    return results
+
+
+def getNumpyClassQuantities(values,quantities,classBreaks):
+    """
+    Tally quantities by class, using quantities within each pixel.  Classes are tested on greater than or equal to lower
+    value and less than upper value.
+
+    :param values:  pixel values
+    :param quantities: quantities measured for each pixel
+    :param classBreaks:
+    :return: list with dictionary objects of class range, count, and quantity
+    """
+
+    import numpy
+    class_results=[]
+    for i in range(0,len(classBreaks)):
+        class_range=classBreaks[i]
+        in_class = numpy.logical_and(values >= float(class_range[0]), values < float(class_range[1]))
+        class_results.append({
+            "class":class_range,
+            "count":int(in_class.sum()),
+            "quantity": (in_class * quantities).sum()
+        })
+    return class_results
+
+
+def FishnetOIDToNumpy(OID,rows,cols):
+    '''
+    Return the row and column in grid coordinates that correspond to the given OID
+    Fishnet numbers start at 1, in bottom left corner, and go columnwise from there.
+    Grid coordinates start at 0, and start in upper left
+    '''
+    row,col=divmod(OID-1,cols)
+    row=(rows-1) - row #invert row order
+    return row,col
+
+
+
+#TODO: use python Counter class when supported
 def getGridCount(grid, summaryField):
     '''
     Return total count of pixels, and count by summary field if passed in
@@ -267,12 +353,13 @@ def getGridCount(grid, summaryField):
         #this will fail if there is no attribute table (e.g., all pixels are NODATA)
         rows = arcpy.SearchCursor(grid)
         for row in rows:
-            totalCount += row.COUNT
+            count=int(row.COUNT)
+            totalCount += count
             if summaryField:
                 summaryValue = row.getValue(summaryField)
                 if not summary.has_key(summaryValue):
                     summary[summaryValue] = 0
-                summary[summaryValue] += row.COUNT
+                summary[summaryValue] += count
         del row, rows
     except:
         pass
@@ -288,177 +375,310 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
     spatialReference: spatial reference object with target projection
     '''
 
-    results=dict()
-
-    arcpy.CheckOutExtension("Spatial")
-    arcpy.env.snapRaster = layer.dataSource
-
-    #Convert the projected user defined feature class (projFC) to a temporary raster - which is in the same spatial reference as the target raster.
-    lyrInfo = arcpy.Describe(layer.dataSource)
-    projFC=srcFC.project(lyrInfo.spatialReference)
-
-    #TODO: check against extents, and skip out from here if there is no overlap of extent
-
-
+    logger.debug("Processing %s"%(layer.name))
     arcpy.env.workspace=TEMP_WORKSPACE.getDirectory()
+    arcpy.env.cartographicCoordinateSystem = None
     try:
         arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getDirectory() # this completely crashes the server container, somehow scratchWorkspace is getting corrupted and cannot be set
         logger.debug("Set scratch workspace")
     except:
         logger.debug("Could not set scratch workspace")
 
-    logger.debug("Creating area of interest raster")
-    aoiGrid = "aoiGrid"
-    #arcpy.Describe(projFC).OIDFieldName
-    arcpy.FeatureToRaster_conversion(projFC, "OBJECTID", aoiGrid, lyrInfo.meanCellHeight)
-
-    #Note: this will fail for polygons that are much smaller than the cell size.  A grid will be produced that has all nodata
-    #Possible solution, convert to points (inside), then convert these to raster.  Also seems to fail more often if going to a GDB raster than regular raster
-    arcpy.BuildRasterAttributeTable_management(aoiGrid)
-    aoiCellCount = getGridCount(aoiGrid, None)[0]
-    if not aoiCellCount:
-        logger.debug("Could not create aoiGrid for polygons, falling back to points instead")
-        tmpPoints="IN_MEMORY/tmpPoints"
-        arcpy.FeatureToPoint_management(projFC, tmpPoints,"INSIDE")
-        arcpy.FeatureToRaster_conversion(tmpPoints, "OBJECTID", aoiGrid, lyrInfo.meanCellHeight)
-        arcpy.BuildRasterAttributeTable_management(aoiGrid)
-        aoiCellCount = getGridCount(aoiGrid, None)[0]
-        del tmpPoints
-
-
-    #Cell area is based on the projection: uses native projection of clipGrid if it is a projected system, otherwise project cell area to target spatialReference
-    cellArea, projectionType = ProjectionUtilities.getCellArea(layer.dataSource, spatialReference)
+    results={
+        "geometryType":"pixel",
+        "intersectionQuantity":0,
+        "method":"approximate" #approximate, precise  TODO: document
+    }
 
     try:
-        arcpy.env.extent=arcpy.Describe(aoiGrid).extent #this dramatically speeds up processing
+        #Convert the projected user defined feature class (projFC) to a temporary raster - which is in the same spatial reference as the target raster.
+        lyrInfo = arcpy.Describe(layer.dataSource)
+        rasterExtent=lyrInfo.extent
 
-        if layerConfig.has_key("statistics"):
-            results["statistics"]=dict()
-            logger.debug("Creating zone grid for statistics from area of interest grid")
-            zoneGrid= arcpy.Raster(aoiGrid) * 0
-            statistics=dict()
-            for statistic in layerConfig["statistics"]:
-                arcgisStatistic = statistic.upper()
-                statistics[statistic]=arcgisStatistic+"IMUM" if arcgisStatistic in ["MIN","MAX"] else arcgisStatistic
-            zonalStatsTable="zonalStatsTable"
-            if arcpy.Exists(zonalStatsTable):
-                arcpy.Delete_management(zonalStatsTable)
-            #note: may need to make layer in to a Raster
-            logger.debug("Executing zonal statistics: %s"%(",".join(statistics.values())))
-            zonalStatsTable = arcpy.sa.ZonalStatisticsAsTable(zoneGrid, "VALUE", arcpy.Raster(layer.dataSource), zonalStatsTable, "DATA", "ALL")
-            del zoneGrid
+        extentInRasterProjection=srcFC.getExtent(lyrInfo.spatialReference,True)
 
-            totalCount=0
-            rows=arcpy.SearchCursor(zonalStatsTable)
-            if rows:
-                for row in rows:
-                    totalCount+=row.COUNT
-                    for statistic in statistics:
-                        results["statistics"][statistic]=row.getValue(statistic.upper())
-                    break #should only have one row
-                del row
-            del rows,zonalStatsTable
-            arcpy.Delete_management("zonalStatsTable")
+        #have to do the comparison ourselves; the builtin geometric comparisons don't work properly (e.g., extent.overlaps)
+        if extentInRasterProjection.XMin > rasterExtent.XMax or extentInRasterProjection.XMax < rasterExtent.XMin or \
+                        extentInRasterProjection.YMin > rasterExtent.YMax or extentInRasterProjection.YMax < rasterExtent.YMin:
+            logger.debug("Source features do not overlap target raster")
+            return results
+
+        arcpy.CheckOutExtension("Spatial")
+
+        #extract using extent
+        clippedGrid="data"
+        arcpy.Clip_management(layer.dataSource,"%f %f %f %f"%(extentInRasterProjection.XMin,extentInRasterProjection.YMin,
+                                                              extentInRasterProjection.XMax,extentInRasterProjection.YMax),
+                              clippedGrid,"#","#","NONE")
+        logger.debug("Projecting raster to target projection")
+        projectedGrid = "projData"
+        geoTransform=ProjectionUtilities.getGeoTransform(lyrInfo.spatialReference, spatialReference)
+        arcpy.ProjectRaster_management(clippedGrid,projectedGrid,spatialReference.exportToString(),geographic_transform=geoTransform)
+        arcpy.Delete_management(clippedGrid)
+        arcpy.env.snapRaster = projectedGrid
+        projectedGrid = arcpy.Raster(projectedGrid)
+        pixelArea = projectedGrid.meanCellHeight * projectedGrid.meanCellWidth * ProjectionUtilities.getProjUnitFactors(spatialReference)[1]
+        results['pixelArea'] = pixelArea
+
+        #get projected features
+        projFC=srcFC.project(spatialReference)
+
+        numPixels = projectedGrid.height * projectedGrid.width
+        logger.debug("%i pixels within extent of source features"%(numPixels))
+
+        if numPixels <= 50000 and srcFC.getGeometryType() in ["Polygon","Polyline"]: #arbitrary limit above which too big to use more exact fishnet-based area weighted methods
+            import numpy
+            results['method']="precise"
+            logger.debug("Small input grid, using precise method")
+
+            logger.debug("Creating fishnet")
+            fishnet=os.path.join(TEMP_WORKSPACE.getGDB(),"fishnet")
+            arcpy.CreateFishnet_management (fishnet, "%f %f"%(projectedGrid.extent.XMin,projectedGrid.extent.YMin),
+                                            "%f %f"%(projectedGrid.extent.XMin,projectedGrid.extent.YMax),
+                                            projectedGrid.meanCellWidth, projectedGrid.meanCellHeight, projectedGrid.height,
+                                            projectedGrid.width, "#", False, projectedGrid, "POLYGON")
+
+            logger.debug("Intersecting with area of interest")
+            intersection = os.path.join(TEMP_WORKSPACE.getGDB(),"intersection")
+            arcpy.Intersect_analysis("%s #;%s #"%(projFC,fishnet),intersection,"ONLY_FID","#","INPUT")
+
+
+            logger.debug("Tabulating quantities")
+            values = arcpy.RasterToNumPyArray(projectedGrid,nodata_to_value=numpy.nan)
+            quantities=numpy.zeros(values.shape)
+            quantityAttribute=srcFC.getQuantityAttribute()
+            areaLengthFactor=0
+            if srcFC.getGeometryType()=="Polyline":
+                areaLengthFactor = ProjectionUtilities.getProjUnitFactors(lyrInfo.spatialReference)[0]
+            elif srcFC.getGeometryType()=="Polygon":
+                areaLengthFactor = ProjectionUtilities.getProjUnitFactors(lyrInfo.spatialReference)[1]
+            rows=arcpy.SearchCursor(intersection)
+            for row in rows:
+                OID=row.getValue("FID_%s"%(os.path.split(fishnet)[1]))
+                grid_row,grid_col=FishnetOIDToNumpy(OID,projectedGrid.height,projectedGrid.width)
+                quantities[grid_row][grid_col]+=getattr(row.shape,quantityAttribute) * areaLengthFactor
+            del row,rows
+            arcpy.Delete_management(fishnet)
+            del fishnet
+            arcpy.Delete_management(intersection)
+            del intersection
+
+            values = numpy.ma.masked_array(values,numpy.logical_or(numpy.isnan(values), quantities==0)) #mask out the original NoData values and areas outside AOI
+            results["intersectionCount"] = (values.mask==False).sum()
+            results["intersectionQuantity"] = round((results["intersectionCount"]) * pixelArea,2)
+            results["sourcePixelCount"] = (quantities!=0).sum() #Note: this will not be accurate if AOI falls outside extent of raster
+
+            src_total_quantity=srcFC.getTotalAreaOrLength(lyrInfo.spatialReference)
+
+            if layerConfig.has_key("statistics"):
+                logger.debug("Calculating statistics")
+                #straight statistics are easy
+                results["statistics"]=dict()
+                if "MIN" in layerConfig["statistics"]:
+                    results["statistics"]["MIN"]=round(values.min(),2)
+                if "MAX" in layerConfig["statistics"]:
+                    results["statistics"]["MAX"]=round(values.max(),2)
+                if "MEAN" in layerConfig["statistics"]:
+                    results["statistics"]["MEAN"]=round(values.mean(),2)
+                if "STD" in layerConfig["statistics"]:
+                    results["statistics"]["STD"]=round(values.std(),2)
+                if "SUM" in layerConfig["statistics"]:
+                    results["statistics"]["SUM"]=round(values.sum(),2)
+
+                #weighted statistics are harder and only really applicable to polygons
+                if srcFC.getGeometryType()=="Polyline":
+                    if "MEAN" in layerConfig["statistics"]:
+                        weighted_values = values * quantities / src_total_quantity #weighted by proportion of srcFC
+                        results["statistics"]["WEIGHTED_MEAN"]=round(weighted_values.sum(),2)
+                else:
+                    pixel_proportion=quantities / pixelArea
+                    weighted_values = values * pixel_proportion #weighted by proportion of each pixel occupied, assuming equal distribution within pixels
+                    if "MIN" in layerConfig["statistics"]:
+                        results["statistics"]["WEIGHTED_MIN"]=round(weighted_values.min(),2)
+                    if "MAX" in layerConfig["statistics"]:
+                        results["statistics"]["WEIGHTED_MAX"]=round(weighted_values.max(),2)
+                    if "MEAN" in layerConfig["statistics"]:
+                        results["statistics"]["WEIGHTED_MEAN"]=round(weighted_values.sum() / pixel_proportion.sum(),2)
+                    if "STD" in layerConfig["statistics"]:
+                        results["statistics"]["WEIGHTED_STD"]=round(weighted_values.std(),2)
+                    if "SUM" in layerConfig["statistics"]:
+                        results["statistics"]["WEIGHTED_SUM"]=round(weighted_values.sum(),2)
+            else:
+                if not projectedGrid.isInteger:
+                    #only option is classes of original values
+                    if layerConfig.has_key("classes"):
+                        logger.debug("Classifying input raster")
+                        results.update({'classes':getNumpyClassQuantities(values,quantities,layerConfig["classes"])})
+                else:
+                    logger.debug("Tabulating unique values")
+                    values=values.astype(int)
+                    by_value_results = getNumpyValueQuantities(values,quantities)
+
+                    if layerConfig.has_key("attributes") and len(layerConfig["attributes"]):
+                        arcpy.BuildRasterAttributeTable_management(projectedGrid)
+                        fields = [field.name for field in arcpy.ListFields(projectedGrid)]
+                        summaryFields=dict([(summaryField["attribute"],SummaryField(summaryField,True)) for summaryField in layerConfig.get("attributes",[])])
+                        diffFields = set(summaryFields.keys()).difference(fields)
+                        if diffFields:
+                            raise ValueError("FIELD_NOT_FOUND: Fields do not exist in layer %s: %s"%(layer.name,",".join([str(fieldName) for fieldName in diffFields])))
+
+                        rows = arcpy.SearchCursor(projectedGrid)
+                        for row in rows:
+                            value=row.getValue("VALUE")
+                            count=by_value_results[value]['count']
+                            quantity=by_value_results[value]['quantity']
+                            for summaryField in summaryFields:
+                                summaryFields[summaryField].addRecord(row.getValue(summaryField),count,quantity)
+                        del rows
+                        for summaryField in summaryFields:
+                            results["attributes"].append(summaryFields[summaryField].getResults())
+
+                    else:
+                        if layerConfig.has_key("classes"):
+                            results.update({'classes':getNumpyClassQuantities(values,quantities,layerConfig["classes"])})
+                        else:
+                            value_results=[]
+                            unique_values=by_value_results.keys()
+                            unique_values.sort()
+                            for value in unique_values:
+                                value_results.append({"value":value,"count":by_value_results[value]['count'],"quantity":by_value_results[value]['quantity']})
+                            results.update({'values':value_results})
 
         else:
-            #clip the target using this grid, snapped to the original grid - watch for alignment issues in aoiGrid - snapRaster is not used there
-            logger.debug("Extracting area of interest from %s"%(layer.name))
-            clipGrid = arcpy.sa.ExtractByMask(layer, aoiGrid)
+            logger.debug("Large input grid or point input, using approximate method")
 
-            if lyrInfo.pixelType.count("F"):
-                #force to single bit data, since we can't build attribute tables of floating point data.
-                #this preserves NODATA areas from clipGrid (don't use aoiGrid for this!)
-                testGrid = clipGrid != lyrInfo.noDataValue
-                arcpy.BuildRasterAttributeTable_management(testGrid)
-                totalCount, summaryCount = getGridCount(testGrid, None)
-                del testGrid
+            logger.debug("Creating area of interest raster")
+            #aoiGrid = os.path.join(TEMP_WORKSPACE.getGDB(),"aoiGrid")
+            aoiGrid = "aoiGrid"
+            #arcpy.Describe(projFC).OIDFieldName  #we control this, not needed
+            arcpy.FeatureToRaster_conversion(projFC, "OBJECTID", aoiGrid, projectedGrid.meanCellHeight)
+            results["sourcePixelCount"] = getGridCount(aoiGrid, None)[0]
 
-                if layerConfig.has_key("classes"):
-                    classCounts=getGridClasses(clipGrid, "VALUE", layerConfig["classes"])
-                    classResults=[]
-                    for classIndex in range(0,len(layerConfig["classes"])):
-                        count=classCounts.get(classIndex,0)
-                        classResults.append({"class":layerConfig["classes"][classIndex],"count":count,"quantity":(float(count)*cellArea)})
-                    results.update({'classes':classResults})
+            if layerConfig.has_key("statistics"):
+                results["statistics"]=dict()
+                logger.debug("Creating zone grid for statistics from area of interest grid")
+                zoneGrid= arcpy.Raster(aoiGrid) * 0
+                statistics=dict()
+                for statistic in layerConfig["statistics"]:
+                    arcgisStatistic = statistic.upper()
+                    statistics[statistic]=arcgisStatistic+"IMUM" if arcgisStatistic in ["MIN","MAX"] else arcgisStatistic
+                zonalStatsTable="zonalStatsTable"
+                if arcpy.Exists(zonalStatsTable):
+                    arcpy.Delete_management(zonalStatsTable)
+                #note: may need to make layer in to a Raster
+                logger.debug("Executing zonal statistics: %s"%(",".join(statistics.values())))
+                zonalStatsTable = arcpy.sa.ZonalStatisticsAsTable(zoneGrid, "VALUE", arcpy.Raster(layer.dataSource), zonalStatsTable, "DATA", "ALL")
+                del zoneGrid
+
+                totalCount=0
+                rows=arcpy.SearchCursor(zonalStatsTable)
+                if rows:
+                    for row in rows:
+                        totalCount+=row.COUNT
+                        for statistic in statistics:
+                            results["statistics"][statistic]=row.getValue(statistic.upper())
+                        break #should only have one row
+                    del row
+                del rows,zonalStatsTable
+                arcpy.Delete_management("zonalStatsTable")
+                results["intersectionCount"]=totalCount
 
             else:
-                arcpy.BuildRasterAttributeTable_management(clipGrid)
-                promoteValueResults=False
-                if not layerConfig.has_key("attributes"):
-                    promoteValueResults=True
-                    layerConfig["attributes"]=[{'attribute':'VALUE'}]
+                #clip the target using this grid, snapped to the original grid - watch for alignment issues in aoiGrid - snapRaster is not used there
+                logger.debug("Extracting area of interest from %s"%(layer.name))
+                clipGrid = arcpy.sa.ExtractByMask(projectedGrid, aoiGrid)
+
+                if not clipGrid.isInteger:
+                    #force to single bit data, since we can't build attribute tables of floating point data.
+                    testGrid = arcpy.sa.IsNull(clipGrid)
+                    arcpy.BuildRasterAttributeTable_management(testGrid)
+                    results["intersectionCount"] =getGridCount(testGrid, "VALUE")[1][0]
+                    #testGrid.save(os.path.join(TEMP_WORKSPACE.getDirectory(),"isnull")) #for testing
+                    del testGrid
+
                     if layerConfig.has_key("classes"):
-                        layerConfig["attributes"][0]['classes']=layerConfig['classes']
+                        classCounts=getGridClasses(clipGrid, "VALUE", layerConfig["classes"])
+                        classResults=[]
+                        for classIndex in range(0,len(layerConfig["classes"])):
+                            count=classCounts.get(classIndex,0)
+                            classResults.append({"class":layerConfig["classes"][classIndex],"count":count,"quantity":(float(count)*pixelArea)})
+                        results.update({'classes':classResults})
 
-                summaryFields=dict([(summaryField["attribute"],SummaryField(summaryField,True)) for summaryField in layerConfig.get("attributes",[])])
-                if summaryFields:
-                    fieldList = set([field.name for field in arcpy.ListFields(clipGrid)])
-                    diffFields = set(summaryFields.keys()).difference(fieldList)
-                    if diffFields:
-                        raise ValueError("FIELD_NOT_FOUND: Fields do not exist in layer %s: %s"%(layer.name,",".join([str(fieldName) for fieldName in diffFields])))
-                    if not promoteValueResults:
-                        results["attributes"]=[]
-
-                count=0
-                rows = arcpy.SearchCursor(clipGrid, "", "")
-                for row in rows:
-                    count+=row.COUNT
-                    for summaryField in summaryFields:
-                        summaryFields[summaryField].addRecord(row.getValue(summaryField),row.COUNT,row.COUNT*cellArea)
-                del rows
-                results["intersectionPixelCount"]=count
-
-                if promoteValueResults:
-                    key = "classes" if layerConfig.has_key("classes") else "values"
-                    results[key]=summaryFields["VALUE"].getResults()[key]
                 else:
-                    for summaryField in summaryFields:
-                        results["attributes"].append(summaryFields[summaryField].getResults())
-            del clipGrid
+                    arcpy.BuildRasterAttributeTable_management(clipGrid)
+                    promoteValueResults=False
+                    if not layerConfig.has_key("attributes"):
+                        promoteValueResults=True
+                        layerConfig["attributes"]=[{'attribute':'VALUE'}]
+                        if layerConfig.has_key("classes"):
+                            layerConfig["attributes"][0]['classes']=layerConfig['classes']
+
+                    summaryFields=dict([(summaryField["attribute"],SummaryField(summaryField,True)) for summaryField in layerConfig.get("attributes",[])])
+                    if summaryFields:
+                        fieldList = set([field.name for field in arcpy.ListFields(clipGrid)])
+                        diffFields = set(summaryFields.keys()).difference(fieldList)
+                        if diffFields:
+                            raise ValueError("FIELD_NOT_FOUND: Fields do not exist in layer %s: %s"%(layer.name,",".join([str(fieldName) for fieldName in diffFields])))
+                        if not promoteValueResults:
+                            results["attributes"]=[]
+
+                    #TODO: use python Counter class if available (python > 2.7)
+                    totalCount=0
+                    rows = arcpy.SearchCursor(clipGrid, "", "")
+                    for row in rows:
+                        totalCount+=row.COUNT
+                        for summaryField in summaryFields:
+                            summaryFields[summaryField].addRecord(row.getValue(summaryField),row.COUNT,row.COUNT*pixelArea)
+                    del rows
+                    results["intersectionCount"]=totalCount
+
+                    if promoteValueResults:
+                        key = "classes" if layerConfig.has_key("classes") else "values"
+                        results[key]=summaryFields["VALUE"].getResults()[key]
+                    else:
+                        for summaryField in summaryFields:
+                            results["attributes"].append(summaryFields[summaryField].getResults())
+
+                arcpy.Delete_management(clipGrid)
+                del clipGrid
+                arcpy.Delete_management(aoiGrid)
+                del aoiGrid
+
+            results["intersectionQuantity"] = float(results["intersectionCount"]) * pixelArea
+
     finally:
-        arcpy.env.extent=None
-
-    results["pixelArea"] = cellArea
-    results["projectionType"] = projectionType
-    results["sourcePixelCount"] = aoiCellCount #getGridCount(aoiGrid, None)[0]
-    results["intersectionQuantity"] = float(results["sourcePixelCount"]) * cellArea
-    results["geometryType"] = "pixel"
-
-    arcpy.CheckInExtension("Spatial")
-    #delete references in this order, otherwise does not delete cleanly
-    del aoiGrid
-    arcpy.Delete_management("aoiGrid")
+        arcpy.CheckInExtension("Spatial")
 
     return results
 
 
-
 def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages):
     logger.debug("tabulateFeatureLayer: %s"%(layer.name))
-    #arcpy.env.workspace = TEMP_WORKSPACE.getGDB()
-    arcpy.env.cartographicCoordinateSystem = spatialReference
-    arcpy.env.extent=None
+    #arcpy.env.workspace = TEMP_WORKSPACE.getGDB() #not needed?
 
+    arcpy.env.extent=None
+    arcpy.env.cartographicCoordinateSystem = None
     results=dict()
 
+    lyrInfo=arcpy.Describe(layer.dataSource)
     #select features from layer using target projection and where clause (if provided)
     selLyr = arcpy.MakeFeatureLayer_management(layer, "selLyr", layerConfig.get("where","")).getOutput(0)
-    logger.debug("Selected features from target layer given where clause")
-
-    #select by location; this is done in the projection of the target FC
-    arcpy.SelectLayerByLocation_management(selLyr, "INTERSECT", srcFC.featureClass)
+    #must project source features into native projection of layer for selection to work properly
+    projSrcFC = srcFC.project(lyrInfo.spatialReference)
+    arcpy.SelectLayerByLocation_management(selLyr, "INTERSECT", projSrcFC)
     logger.debug("Selected features from target layer that intersect area of interest")
     featureCount = int(arcpy.GetCount_management(selLyr).getOutput(0))
     logger.debug("Found %s intersecting features"%(featureCount))
 
     if featureCount>0:
+        arcpy.env.cartographicCoordinateSystem = spatialReference
         selFC = "IN_MEMORY/selFC"
         #Selected features must be copied into new feature class for projection step, otherwise it uses the entire dataset (lame!)
         logger.debug("Copying selected features to in-memory feature class")
         arcpy.CopyFeatures_management(selLyr,selFC)
 
         #project the selection to target projection, and then intersect with source (in target projection)
-        geoTransform=ProjectionUtilities.getGeoTransform(arcpy.Describe(layer.dataSource).spatialReference, spatialReference)
+        geoTransform=ProjectionUtilities.getGeoTransform(lyrInfo.spatialReference, spatialReference)
         logger.debug("Projecting selected features from %s"%(layer.name))
         projFC = FeatureClassWrapper(arcpy.Project_management(selFC, "projFC", spatialReference,geoTransform).getOutput(0))
         logger.debug("Intersecting selected features with area of interest")
@@ -617,13 +837,14 @@ def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference,message
     return {"serviceID":serviceID,"layers":results}
 
 
-def tabulateMapServices(srcFC,config,projectionWKID,messages):
+def tabulateMapServices(srcFC,config,messages):
     '''
     srcFC: instance of FeatureClass wrapper with the area of interest features
     config: TODO: operate on original list of map services
     projectionWKID: ESRI WKID representing the target projection to use for all calculations (e.g., 102003, which is USA_Contiguous_Albers_Equal_Area_Conic)
     '''
 
+    start=time.time()
     logger.debug("Temporary Workspace: %s"%(TEMP_WORKSPACE.getDirectory()))
     arcpy.env.workspace=arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getGDB()
 
@@ -632,10 +853,9 @@ def tabulateMapServices(srcFC,config,projectionWKID,messages):
         return results
 
     #setup target projection
-    spatialReference = arcpy.SpatialReference()
-    spatialReference.factoryCode = projectionWKID
-    spatialReference.create()
-    arcpy.env.cartographicCoordinateSystem = spatialReference #TODO: confirm we want this set everywhere
+    logger.debug("Setting up custom Albers projection")
+    geoExtent=srcFC.getExtent(ProjectionUtilities.getSpatialReferenceFromWKID(4326))
+    spatialReference = ProjectionUtilities.createCustomAlbers(geoExtent)
 
     if not srcFC.getCount():
         raise Exception("INVALID INPUT: no features in input")
@@ -661,6 +881,7 @@ def tabulateMapServices(srcFC,config,projectionWKID,messages):
         messages.incrementMajorStep()
 
     TEMP_WORKSPACE.delete()
+    logger.debug("Elapsed time: %.2f"%(time.time()-start))
     return results
 
 
