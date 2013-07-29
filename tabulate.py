@@ -414,7 +414,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
         projectedGrid = "projData"
         geoTransform=ProjectionUtilities.getGeoTransform(lyrInfo.spatialReference, spatialReference)
         arcpy.ProjectRaster_management(clippedGrid,projectedGrid,spatialReference.exportToString(),geographic_transform=geoTransform)
-        arcpy.Delete_management(clippedGrid)
+        #arcpy.Delete_management(clippedGrid) #this is causing issues on server, maybe getting deleted too soon? TODO: create a delete tool that runs in a try-catch block
         arcpy.env.snapRaster = projectedGrid
         projectedGrid = arcpy.Raster(projectedGrid)
         pixelArea = projectedGrid.meanCellHeight * projectedGrid.meanCellWidth * ProjectionUtilities.getProjUnitFactors(spatialReference)[1]
