@@ -143,15 +143,6 @@ Inputs
 
 
 
-**targetProjectionWKID:**
-    The target projection ESRI Well-Known ID (WKID).
-
-    :Example: 102003
-
-    .. note:: only limited projections are supported due to ArcGIS requirement for geographic transformations between
-     the source and target projections (see utilities/ProjectionUtilities.py for supported geographic transformations)
-
-
 
 Outputs
 =======

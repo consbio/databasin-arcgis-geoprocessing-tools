@@ -58,7 +58,7 @@ def test_tabulateMapServices_polygon_aoi():
     srcFC = FeatureClassWrapper(createFeatureClass(POLYGON_JSON))
     config=json.loads(CONFIG_JSON)
     results = tabulateMapServices(srcFC,config,messages)
-    print json.dumps(results,indent=1)
+    #print json.dumps(results,indent=1)
 
     assert results['area_units']=="hectares"
     assert results['sourceGeometryType']=="polygon"
@@ -146,7 +146,7 @@ def test_tabulateMapServices_line_aoi():
     assert layerResults['layerID']==3
     assert layerResults['pixelArea']==0.090000000000000011
     assert layerResults['geometryType']=="pixel"
-    assert layerResults['sourcePixelCount']==747
+    assert layerResults['sourcePixelCount']==746
     assert layerResults['intersectionQuantity']==67.230000000000004
     assert layerResults['values'][0]['value']==1
     assert layerResults['values'][0]['count']==209
@@ -195,7 +195,7 @@ def test_tabulateMapServices_point_aoi():
     assert layerResults['pixelArea']==0.090000000000000011
     assert layerResults['geometryType']=="pixel"
     assert layerResults['sourcePixelCount']==3
-    assert layerResults['intersectionCount']==2
+    assert layerResults['intersectionCount']==3
     assert layerResults['intersectionQuantity']==0.18000000000000002
     assert layerResults['values'][0]['value']==2
     assert layerResults['values'][0]['count']==1
@@ -237,8 +237,8 @@ def test_tabulateMapServices_polygon_aoi_central_america():
     assert layerResults['attributes'][0]['values'][0]['value']=="Tropical mountain system"
 
     layerResults=results['services'][0]['layers'][1]
-    assert layerResults['sourcePixelCount']==6691
-    assert layerResults['intersectionCount']==6691
+    assert layerResults['sourcePixelCount']==6690
+    assert layerResults['intersectionCount']==6690
     assert layerResults['intersectionQuantity']== 143628.12
     assert layerResults['classes'][0]['count']==1258
     assert layerResults['classes'][0]['class']==[0,50]
@@ -280,8 +280,8 @@ def test_tabulateMapServices_line_aoi_central_america():
     assert layerResults['attributes'][0]['values'][0]['value']=="Tropical mountain system"
 
     layerResults=results['services'][0]['layers'][1]
-    assert layerResults['sourcePixelCount']==208
-    assert layerResults['intersectionCount']==208
+    assert layerResults['sourcePixelCount']==209
+    assert layerResults['intersectionCount']==209
     assert layerResults['intersectionQuantity']== 4464.8999999999996
     assert layerResults['classes'][0]['count']==56
     assert layerResults['classes'][0]['class']==[0,50]
@@ -302,7 +302,7 @@ def test_tabulateMapServices_point_aoi_central_america():
     srcFC = FeatureClassWrapper(createFeatureClass(POINT_JSON_CENTRAL_AMERICA))
     config=json.loads(CONFIG_JSON_CENTRAL_AMERICA)
     results = tabulateMapServices(srcFC,config,messages)
-    #print json.dumps(results,indent=1)
+    print json.dumps(results,indent=1)
 
     assert results['sourceGeometryType']=="point"
     assert results['services'][0]['serviceID']=="test_central_america"
@@ -336,4 +336,18 @@ def test_tabulateMapServices_point_aoi_central_america():
     assert layerResults['statistics']['STD']==0.0
     assert layerResults['statistics']['SUM']==137.5
 
-test_tabulateMapServices_polygon_aoi()
+
+
+messages = MessageHandler(logger=logger)
+arcpy.Delete_management("IN_MEMORY/")
+srcFC = FeatureClassWrapper(createFeatureClass(POINT_JSON_CENTRAL_AMERICA))
+config=json.loads("""
+{"services":[
+    {"serviceID":"test_central_america","layers":[
+        {"layerID":1,"classes":[[0,50],[50,100],[100,150],[150,200]]}
+    ]}
+]}
+
+""")
+results = tabulateMapServices(srcFC,config,messages)
+print json.dumps(results,indent=1)
