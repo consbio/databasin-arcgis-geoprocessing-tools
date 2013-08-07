@@ -293,14 +293,17 @@ def getNumpyValueQuantities(values,quantities):
 
     import numpy
     flat_values=values.flatten()
-    #flat_quantities=quantities.flatten()
+    flat_quantities=quantities.flatten()
     results=dict()
-    for value in numpy.unique(flat_values):
-        equals_value = values==value
-        results[value]={
-            "count": int(equals_value.sum()),
-            "quantity": (equals_value * quantities).sum()
-        }
+    for value in numpy.ma.unique(flat_values):
+        equals_value = flat_values==value
+        count=equals_value.count()
+        if count:
+            #mask values have count==0
+            results[value]={
+                "count": count,
+                "quantity": (equals_value * flat_quantities).sum()
+            }
     return results
 
 
@@ -348,7 +351,6 @@ def getGridCount(grid, summaryField):
 
     totalCount = 0
     summary = dict()
-
     try:
         #this will fail if there is no attribute table (e.g., all pixels are NODATA)
         rows = arcpy.SearchCursor(grid)
@@ -366,6 +368,20 @@ def getGridCount(grid, summaryField):
     return totalCount, summary
 
 
+def getGridValueField(grid):
+    '''
+    Return value field name for grid, because case changes based on format
+
+    :param grid: input grid
+    :return: name of value field in grid
+    '''
+
+    for field in arcpy.ListFields(grid):
+        if field.name.lower()=="value":
+            return field.name
+    return "VALUE"
+
+
 
 def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
     '''
@@ -378,23 +394,22 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
     logger.debug("Processing %s"%(layer.name))
     arcpy.env.workspace=TEMP_WORKSPACE.getDirectory()
     arcpy.env.cartographicCoordinateSystem = None
-    try:
-        arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getDirectory() # this completely crashes the server container, somehow scratchWorkspace is getting corrupted and cannot be set
-        logger.debug("Set scratch workspace")
-    except:
-        logger.debug("Could not set scratch workspace")
+    # try:
+    #     arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getDirectory() # this completely crashes the server container, somehow scratchWorkspace is getting corrupted and cannot be set
+    #     logger.debug("Set scratch workspace")
+    # except:
+    #     logger.debug("Could not set scratch workspace")
 
     results={
         "geometryType":"pixel",
         "intersectionQuantity":0,
-        "method":"approximate" #approximate, precise  TODO: document
+        "method":"approximate"
     }
 
     try:
         #Convert the projected user defined feature class (projFC) to a temporary raster - which is in the same spatial reference as the target raster.
         lyrInfo = arcpy.Describe(layer.dataSource)
         rasterExtent=lyrInfo.extent
-
         extentInRasterProjection=srcFC.getExtent(lyrInfo.spatialReference,True)
 
         #have to do the comparison ourselves; the builtin geometric comparisons don't work properly (e.g., extent.overlaps)
@@ -405,16 +420,19 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
         arcpy.CheckOutExtension("Spatial")
 
+        #TODO: if point type, branch here and use sample tool
+
+
         #extract using extent
-        clippedGrid="data"
+        clippedGrid="data.img"
         arcpy.Clip_management(layer.dataSource,"%f %f %f %f"%(extentInRasterProjection.XMin,extentInRasterProjection.YMin,
                                                               extentInRasterProjection.XMax,extentInRasterProjection.YMax),
                               clippedGrid,"#","#","NONE")
         logger.debug("Projecting raster to target projection")
-        projectedGrid = "projData"
+        projectedGrid = "projData.img"
         geoTransform=ProjectionUtilities.getGeoTransform(lyrInfo.spatialReference, spatialReference)
         arcpy.ProjectRaster_management(clippedGrid,projectedGrid,spatialReference.exportToString(),geographic_transform=geoTransform)
-        #arcpy.Delete_management(clippedGrid) #this is causing issues on server, maybe getting deleted too soon? TODO: create a delete tool that runs in a try-catch block
+
         arcpy.env.snapRaster = projectedGrid
         projectedGrid = arcpy.Raster(projectedGrid)
         pixelArea = projectedGrid.meanCellHeight * projectedGrid.meanCellWidth * ProjectionUtilities.getProjUnitFactors(spatialReference)[1]
@@ -449,9 +467,9 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
             quantityAttribute=srcFC.getQuantityAttribute()
             areaLengthFactor=0
             if srcFC.getGeometryType()=="Polyline":
-                areaLengthFactor = ProjectionUtilities.getProjUnitFactors(lyrInfo.spatialReference)[0]
+                areaLengthFactor = ProjectionUtilities.getProjUnitFactors(spatialReference)[0]
             elif srcFC.getGeometryType()=="Polygon":
-                areaLengthFactor = ProjectionUtilities.getProjUnitFactors(lyrInfo.spatialReference)[1]
+                areaLengthFactor = ProjectionUtilities.getProjUnitFactors(spatialReference)[1]
             rows=arcpy.SearchCursor(intersection)
             for row in rows:
                 OID=row.getValue("FID_%s"%(os.path.split(fishnet)[1]))
@@ -468,7 +486,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
             results["intersectionQuantity"] = round((results["intersectionCount"]) * pixelArea,2)
             results["sourcePixelCount"] = (quantities!=0).sum() #Note: this will not be accurate if AOI falls outside extent of raster
 
-            src_total_quantity=srcFC.getTotalAreaOrLength(lyrInfo.spatialReference)
+            src_total_quantity=srcFC.getTotalAreaOrLength(spatialReference)
 
             if layerConfig.has_key("statistics"):
                 logger.debug("Calculating statistics")
@@ -543,15 +561,14 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                             for value in unique_values:
                                 value_results.append({"value":value,"count":by_value_results[value]['count'],"quantity":by_value_results[value]['quantity']})
                             results.update({'values':value_results})
-
         else:
             logger.debug("Large input grid or point input, using approximate method")
 
             logger.debug("Creating area of interest raster")
-            #aoiGrid = os.path.join(TEMP_WORKSPACE.getGDB(),"aoiGrid")
-            aoiGrid = "aoiGrid"
+            aoiGrid = "aoiGrid.img"
             #arcpy.Describe(projFC).OIDFieldName  #we control this, not needed
             arcpy.FeatureToRaster_conversion(projFC, "OBJECTID", aoiGrid, projectedGrid.meanCellHeight)
+            arcpy.BuildRasterAttributeTable_management(aoiGrid)
             results["sourcePixelCount"] = getGridCount(aoiGrid, None)[0]
 
             if layerConfig.has_key("statistics"):
@@ -565,9 +582,9 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                 zonalStatsTable="zonalStatsTable"
                 if arcpy.Exists(zonalStatsTable):
                     arcpy.Delete_management(zonalStatsTable)
-                #note: may need to make layer in to a Raster
+                arcpy.BuildRasterAttributeTable_management(zoneGrid)
                 logger.debug("Executing zonal statistics: %s"%(",".join(statistics.values())))
-                zonalStatsTable = arcpy.sa.ZonalStatisticsAsTable(zoneGrid, "VALUE", arcpy.Raster(layer.dataSource), zonalStatsTable, "DATA", "ALL")
+                zonalStatsTable = arcpy.sa.ZonalStatisticsAsTable(zoneGrid, getGridValueField(zoneGrid), arcpy.Raster(layer.dataSource), zonalStatsTable, "DATA", "ALL")
                 del zoneGrid
 
                 totalCount=0
@@ -592,12 +609,12 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                     #force to single bit data, since we can't build attribute tables of floating point data.
                     testGrid = arcpy.sa.IsNull(clipGrid)
                     arcpy.BuildRasterAttributeTable_management(testGrid)
-                    results["intersectionCount"] =getGridCount(testGrid, "VALUE")[1][0]
+                    results["intersectionCount"] =getGridCount(testGrid, getGridValueField(testGrid))[1][0]
                     #testGrid.save(os.path.join(TEMP_WORKSPACE.getDirectory(),"isnull")) #for testing
                     del testGrid
 
                     if layerConfig.has_key("classes"):
-                        classCounts=getGridClasses(clipGrid, "VALUE", layerConfig["classes"])
+                        classCounts=getGridClasses(clipGrid, getGridValueField(clipGrid), layerConfig["classes"])
                         classResults=[]
                         for classIndex in range(0,len(layerConfig["classes"])):
                             count=classCounts.get(classIndex,0)
@@ -645,7 +662,10 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                 del aoiGrid
 
             results["intersectionQuantity"] = float(results["intersectionCount"]) * pixelArea
-
+        try:
+            arcpy.Delete_management(clippedGrid) #this is causing issues on server, maybe getting deleted too soon? TODO: create a delete tool that runs in a try-catch block
+        except:
+            pass
     finally:
         arcpy.CheckInExtension("Spatial")
 
@@ -880,7 +900,7 @@ def tabulateMapServices(srcFC,config,messages):
             results["services"].append({"error":error})
         messages.incrementMajorStep()
 
-    TEMP_WORKSPACE.delete()
+    #TEMP_WORKSPACE.delete()
     logger.debug("Elapsed time: %.2f"%(time.time()-start))
     return results
 
