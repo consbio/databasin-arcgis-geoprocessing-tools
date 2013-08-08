@@ -392,7 +392,6 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
     '''
 
     logger.debug("Processing %s"%(layer.name))
-    arcpy.env.workspace=TEMP_WORKSPACE.getDirectory()
     arcpy.env.cartographicCoordinateSystem = None
     # try:
     #     arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getDirectory() # this completely crashes the server container, somehow scratchWorkspace is getting corrupted and cannot be set
@@ -424,12 +423,12 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
 
         #extract using extent
-        clippedGrid="data.img"
+        clippedGrid=os.path.join(TEMP_WORKSPACE.getDirectory(),"data.img")
         arcpy.Clip_management(layer.dataSource,"%f %f %f %f"%(extentInRasterProjection.XMin,extentInRasterProjection.YMin,
                                                               extentInRasterProjection.XMax,extentInRasterProjection.YMax),
                               clippedGrid,"#","#","NONE")
         logger.debug("Projecting raster to target projection")
-        projectedGrid = "projData.img"
+        projectedGrid = os.path.join(TEMP_WORKSPACE.getDirectory(),"projData.img")
         geoTransform=ProjectionUtilities.getGeoTransform(lyrInfo.spatialReference, spatialReference)
         arcpy.ProjectRaster_management(clippedGrid,projectedGrid,spatialReference.exportToString(),geographic_transform=geoTransform)
 
@@ -565,7 +564,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
             logger.debug("Large input grid or point input, using approximate method")
 
             logger.debug("Creating area of interest raster")
-            aoiGrid = "aoiGrid.img"
+            aoiGrid = os.path.join(TEMP_WORKSPACE.getDirectory(),"aoiGrid.img")
             #arcpy.Describe(projFC).OIDFieldName  #we control this, not needed
             arcpy.FeatureToRaster_conversion(projFC, "OBJECTID", aoiGrid, projectedGrid.meanCellHeight)
             arcpy.BuildRasterAttributeTable_management(aoiGrid)
@@ -574,12 +573,13 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
             if layerConfig.has_key("statistics"):
                 results["statistics"]=dict()
                 logger.debug("Creating zone grid for statistics from area of interest grid")
-                zoneGrid= arcpy.Raster(aoiGrid) * 0
+                zoneGrid = arcpy.sa.Times(aoiGrid,0)
+
                 statistics=dict()
                 for statistic in layerConfig["statistics"]:
                     arcgisStatistic = statistic.upper()
                     statistics[statistic]=arcgisStatistic+"IMUM" if arcgisStatistic in ["MIN","MAX"] else arcgisStatistic
-                zonalStatsTable="zonalStatsTable"
+                zonalStatsTable="%s/zonalStatsTable"%(TEMP_WORKSPACE.getGDB())
                 if arcpy.Exists(zonalStatsTable):
                     arcpy.Delete_management(zonalStatsTable)
                 arcpy.BuildRasterAttributeTable_management(zoneGrid)
@@ -597,7 +597,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                         break #should only have one row
                     del row
                 del rows,zonalStatsTable
-                arcpy.Delete_management("zonalStatsTable")
+                arcpy.Delete_management("%s/zonalStatsTable"%(TEMP_WORKSPACE.getGDB()))
                 results["intersectionCount"]=totalCount
 
             else:
@@ -658,8 +658,8 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
                 arcpy.Delete_management(clipGrid)
                 del clipGrid
-                arcpy.Delete_management(aoiGrid)
-                del aoiGrid
+            arcpy.Delete_management(aoiGrid)
+            del aoiGrid
 
             results["intersectionQuantity"] = float(results["intersectionCount"]) * pixelArea
         try:
@@ -674,7 +674,6 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
 def tabulateFeatureLayer(srcFC,layer,layerConfig,spatialReference,messages):
     logger.debug("tabulateFeatureLayer: %s"%(layer.name))
-    #arcpy.env.workspace = TEMP_WORKSPACE.getGDB() #not needed?
 
     arcpy.env.extent=None
     arcpy.env.cartographicCoordinateSystem = None
@@ -866,7 +865,8 @@ def tabulateMapServices(srcFC,config,messages):
 
     start=time.time()
     logger.debug("Temporary Workspace: %s"%(TEMP_WORKSPACE.getDirectory()))
-    arcpy.env.workspace=arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getGDB()
+    arcpy.env.workspace=TEMP_WORKSPACE.getGDB() #workspace must be pointing at GDB to prevent server object crashes when run as 10.0 geoprocessing service!
+    arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getGDB()
 
     results=dict()
     if not config.has_key("services"):
@@ -900,7 +900,7 @@ def tabulateMapServices(srcFC,config,messages):
             results["services"].append({"error":error})
         messages.incrementMajorStep()
 
-    #TEMP_WORKSPACE.delete()
+    TEMP_WORKSPACE.delete()
     logger.debug("Elapsed time: %.2f"%(time.time()-start))
     return results
 

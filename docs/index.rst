@@ -41,7 +41,7 @@ Requirements
 ============
 * ArcGIS Server 10.0 to 10.1, including spatial analyst extension
 * Published map services containing data to be operated against
-
+* Numpy 1.6.1 or later (note: ArcGIS 10 ships with older version that must be upgraded)
 
 Installation
 ============
