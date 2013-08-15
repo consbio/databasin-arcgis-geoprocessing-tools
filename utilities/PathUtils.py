@@ -94,13 +94,75 @@ def getMXDPathForService(serviceID):
         infile=open(configFilename)
         xml=infile.read()
         infile.close()
-        return re.search("(?<=<FilePath>).*?(?=</FilePath>)",xml).group().strip()
+        return os.path.normpath(re.search("(?<=<FilePath>).*?(?=</FilePath>)",xml).group().strip())
+
+    elif settings.ARCGIS_VERSION=="10.1":
+        import json
+        configJSONFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%s.MapServer/%s.MapServer.json"%(serviceID,serviceID))
+        if not os.path.exists(configJSONFilename):
+            raise ReferenceError("Map service config file not found: %s, make sure the service is published and serviceID is valid"%(configJSONFilename))
+        configJSON=json.loads(open(configJSONFilename))
+        return os.path.normpath(configJSON['properties']['filePath'])
+
+
+def extractLayerPathFromMSDLayerXML(msd,xmlPath):
+    '''
+    Extracts layer data source from layer XML files stored in MSD.
+
+    Note: only tested with ArcGIS 10.1 MSDs
+
+    :param msd: MSD file opened via ZipFile
+    :param xmlPath: path to XML file with layerInfo
+    :return: list of layer paths, or None for each group layer; index in this list = layerID
+    '''
+
+    from xml.etree.ElementTree import fromstring
+
+    xml=fromstring(msd.open(xmlPath).read())
+    layersNode=xml.find("Layers")
+    layers=[]
+    if layersNode is not None:
+        layers.append(None) #no path
+        layerXMLPaths=[node.text.replace("CIMPATH=","") for node in layersNode.findall('String')]
+        for layerXMLPath in layerXMLPaths:
+            layers.extend(extractLayerPathFromMSDLayerXML(msd,layerXMLPath))
+    else:
+        dataConnectionNode=xml.find("DataConnection")
+        if dataConnectionNode is None:
+            dataConnectionNode=xml.find("FeatureTable/DataConnection")
+        if dataConnectionNode is not None:
+            workspace=dataConnectionNode.findtext("WorkspaceConnectionString").replace("DATABASE=","")
+            dataset=dataConnectionNode.findtext("Dataset")
+            layers.append(os.path.normpath(os.path.join(os.path.dirname(msd.filename),workspace,dataset)))
+        else:
+            raise ValueError("Could not extract layer data source from MSD XML file: %s"%(xmlPath))
+    return layers
+
+
+def getDataPathsForService(serviceID):
+    '''
+    Extract paths for data layers in map service.
+
+    Note: This code has not been fully tested in place
+    :param serviceID:
+    :return: return list of layers paths (or None for group layers); order in this list = layerID
+    '''
+
+    if settings.ARCGIS_VERSION=="10.0":
+        raise NotImplementedError("Not built yet!")
 
     elif settings.ARCGIS_VERSION=="10.1": #Not yet tested!
-        from xml.etree import ElementTree
-        configFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%s.MapServer/esriinfo/manifest/manifest.xml"%(serviceID))
-        if not os.path.exists(configFilename):
-            raise ReferenceError("Map service config file not found: %s, make sure the service is published and serviceID is valid"%(configFilename))
-        xml = ElementTree.parse(configFilename)
-        return xml.getroot().find("Resources/SVCResource/ServerPath").text.strip().replace(".msd",".mxd")
+        import json
+        from xml.etree.ElementTree import fromstring
+        from zipfile import ZipFile
 
+        #json file contains pointer to MSD file
+        configJSONFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%s.MapServer/%s.MapServer.json"%(serviceID,serviceID))
+        if not os.path.exists(configJSONFilename):
+            raise ReferenceError("Map service config file not found: %s, make sure the service is published and serviceID is valid"%(configJSONFilename))
+        configJSON=json.loads(open(configJSONFilename))
+        msd=ZipFile(os.path.normpath(configJSON['properties']['filePath']))
+        #doc info file contains pointer to layers XML file
+        layersXMLPath=fromstring(msd.open("DocumentInfo.xml").read()).findtext("ActiveMapRepositoryPath").replace("CIMPATH=","")
+        layers=extractLayerPathFromMSDLayerXML(layersXMLPath)
+        msd.close()
