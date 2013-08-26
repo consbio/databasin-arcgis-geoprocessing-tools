@@ -63,10 +63,12 @@ TODO
 Known Limitations
 =================
 * A limited range of spatial projections are supported for target calculations and source map services, due to the ArcGIS
-  requirement of including a geographic transformation to project between many different projections.  Currently only continent-scale projections and geographic transformations
+  requirement of including a geographic transformation to project between many different projections.  Currently only continent-scale geographic transformations
   are included with these tools.  Additional transformations can be added to utilities/ProjectionUtilities.py
 * Tool execution times vary with the number of layers, complexity of geometries, and extent of analysis.  Expect analysis
   of several complex layers over larger areas to be slower.
+* Path routing to ArcGIS layer data sources will not work for enterprise geodatabases
+
 
 
 

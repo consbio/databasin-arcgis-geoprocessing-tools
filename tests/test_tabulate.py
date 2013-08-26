@@ -337,17 +337,17 @@ def test_tabulateMapServices_point_aoi_central_america():
     assert layerResults['statistics']['SUM']==137.5
 
 
-
-messages = MessageHandler(logger=logger)
-arcpy.Delete_management("IN_MEMORY/")
-srcFC = FeatureClassWrapper(createFeatureClass(POINT_JSON_CENTRAL_AMERICA))
-config=json.loads("""
-{"services":[
-    {"serviceID":"test_central_america","layers":[
-        {"layerID":1,"classes":[[0,50],[50,100],[100,150],[150,200]]}
-    ]}
-]}
-
-""")
-results = tabulateMapServices(srcFC,config,messages)
-print json.dumps(results,indent=1)
+#Test case for single point handling
+# messages = MessageHandler(logger=logger)
+# arcpy.Delete_management("IN_MEMORY/")
+# srcFC = FeatureClassWrapper(createFeatureClass(POINT_JSON_CENTRAL_AMERICA))
+# config=json.loads("""
+# {"services":[
+#     {"serviceID":"test_central_america","layers":[
+#         {"layerID":1,"classes":[[0,50],[50,100],[100,150],[150,200]]}
+#     ]}
+# ]}
+#
+# """)
+# results = tabulateMapServices(srcFC,config,messages)
+# print json.dumps(results,indent=1)
