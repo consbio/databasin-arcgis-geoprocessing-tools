@@ -79,10 +79,13 @@ class TemporaryWorkspace:
         self.tmpDir=None
 
 
+#Deprecated
 def getMXDPathForService(serviceID):
     """
     Find the path to the map document behind a running map service.  Assumes that services are local.  Location to base directory
     for finding map service configuration file is in settings.py: ARCGIS_SVC_CONFIG_DIR
+
+    Note: this is deprecated; use getDataPathsForService() instead.
 
     :param serviceID: from URL: /arcgis/rest/services/<serviceID>/MapServer
     """
@@ -132,8 +135,12 @@ def extractLayerPathFromMSDLayerXML(msd,xmlPath):
             dataConnectionNode=xml.find("FeatureTable/DataConnection")
         if dataConnectionNode is not None:
             workspace=dataConnectionNode.findtext("WorkspaceConnectionString").replace("DATABASE=","")
+            workspace_type=dataConnectionNode.findtext("WorkspaceFactory")
             dataset=dataConnectionNode.findtext("Dataset")
-            layers.append(os.path.normpath(os.path.join(os.path.dirname(msd.filename),workspace,dataset)))
+            path=os.path.join(os.path.dirname(msd.filename),workspace,dataset)
+            if workspace_type=="Shapefile":
+                path+=".shp"
+            layers.append(os.path.normpath(path))
         else:
             raise ValueError("Could not extract layer data source from MSD XML file: %s"%(xmlPath))
     return layers
@@ -141,15 +148,30 @@ def extractLayerPathFromMSDLayerXML(msd,xmlPath):
 
 def getDataPathsForService(serviceID):
     '''
-    Extract paths for data layers in map service.
+    Extract paths for data layers in map service..
 
-    Note: This code has not been fully tested in place
     :param serviceID:
     :return: return list of layers paths (or None for group layers); order in this list = layerID
     '''
 
+    layers=[]
+
     if settings.ARCGIS_VERSION=="10.0":
-        raise NotImplementedError("Not built yet!")
+        configFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%s.MapServer.cfg"%(serviceID))
+        if not os.path.exists(configFilename):
+            raise ReferenceError("Map service config file not found: %s, make sure the service is published and serviceID is valid"%(configFilename))
+        infile=open(configFilename)
+        xml=infile.read()
+        infile.close()
+        mapDocPath = os.path.normpath(re.search("(?<=<FilePath>).*?(?=</FilePath>)",xml).group().strip())
+        mapDoc = arcpy.mapping.MapDocument(mapDocPath)
+        for layer in arcpy.mapping.ListLayers(mapDoc, "*", arcpy.mapping.ListDataFrames(mapDoc)[0]):
+            if layer.isGroupLayer:
+                layers.append(None)
+            else:
+                layers.append(layer.dataSource)
+        del mapDoc
+
 
     elif settings.ARCGIS_VERSION=="10.1": #Not yet tested!
         import json
@@ -157,12 +179,16 @@ def getDataPathsForService(serviceID):
         from zipfile import ZipFile
 
         #json file contains pointer to MSD file
-        configJSONFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%s.MapServer/%s.MapServer.json"%(serviceID,serviceID))
+        configJSONFilename=os.path.normpath(os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%s.MapServer/%s.MapServer.json"%(serviceID,serviceID)))
         if not os.path.exists(configJSONFilename):
             raise ReferenceError("Map service config file not found: %s, make sure the service is published and serviceID is valid"%(configJSONFilename))
-        configJSON=json.loads(open(configJSONFilename))
-        msd=ZipFile(os.path.normpath(configJSON['properties']['filePath']))
+
+        configJSON=json.loads(open(configJSONFilename).read())
+        msdPath=os.path.normpath(configJSON['properties']['filePath'])
+        msd=ZipFile(msdPath)
         #doc info file contains pointer to layers XML file
         layersXMLPath=fromstring(msd.open("DocumentInfo.xml").read()).findtext("ActiveMapRepositoryPath").replace("CIMPATH=","")
-        layers=extractLayerPathFromMSDLayerXML(layersXMLPath)
+        layers=extractLayerPathFromMSDLayerXML(msd,layersXMLPath)
         msd.close()
+
+    return layers

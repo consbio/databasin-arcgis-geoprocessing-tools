@@ -26,8 +26,7 @@ if __name__ == "__main__":
 import arcpy
 from utilities import FeatureSetConverter, ProjectionUtilities
 import settings
-from utilities.PathUtils import TemporaryWorkspace,getMXDPathForService
-#from tool_logging import ToolLogger
+from utilities.PathUtils import TemporaryWorkspace,getDataPathsForService
 from messaging import MessageHandler
 
 
@@ -823,17 +822,15 @@ def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference,message
     '''
 
     results=[]
-    mapDocPath = getMXDPathForService(serviceID)
-    logger.debug("Map document for service %s: %s"%(serviceID,mapDocPath))
-    mapDoc = arcpy.mapping.MapDocument(mapDocPath)
-    layers = arcpy.mapping.ListLayers(mapDoc, "*", arcpy.mapping.ListDataFrames(mapDoc)[0])
+    layerPaths=getDataPathsForService(serviceID)
     messages.setMinorSteps(len(mapServiceConfig['layers']))
     for layerConfig in mapServiceConfig['layers']:
         lyrResults = dict()
         layerID = int(layerConfig["layerID"])
-        if not (layerID >= 0 and layerID < len(layers)):
+        if not (layerID >= 0 and layerID < len(layerPaths)):
             raise ValueError("LAYER_NOT_FOUND: Layer not found for layerID: %s" % (layerID))
-        layer = layers[layerID]
+        layer = arcpy.mapping.Layer(layerPaths[layerID])
+        #TODO: handle layer definition specified in MXD / MSD
         try:
             logger.debug("Processing layer %s: %s"%(layerID,layer.name))
             result={"layerID":layerID}
@@ -852,7 +849,6 @@ def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference,message
 
         messages.incrementMinorStep()
 
-    del mapDoc
     return {"serviceID":serviceID,"layers":results}
 
 
