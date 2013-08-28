@@ -539,8 +539,9 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                             raise ValueError("FIELD_NOT_FOUND: Fields do not exist in layer %s: %s"%(layer.name,",".join([str(fieldName) for fieldName in diffFields])))
 
                         rows = arcpy.SearchCursor(projectedGrid)
+                        valueField=getGridValueField(projectedGrid)
                         for row in rows:
-                            value=row.getValue("VALUE")
+                            value=row.getValue(valueField)
                             count=by_value_results[value]['count']
                             quantity=by_value_results[value]['quantity']
                             for summaryField in summaryFields:
@@ -622,10 +623,11 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
                 else:
                     arcpy.BuildRasterAttributeTable_management(clipGrid)
+                    valueField=getGridValueField(clipGrid)
                     promoteValueResults=False
                     if not layerConfig.has_key("attributes"):
                         promoteValueResults=True
-                        layerConfig["attributes"]=[{'attribute':'VALUE'}]
+                        layerConfig["attributes"]=[{'attribute':valueField}]
                         if layerConfig.has_key("classes"):
                             layerConfig["attributes"][0]['classes']=layerConfig['classes']
 
@@ -650,7 +652,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
                     if promoteValueResults:
                         key = "classes" if layerConfig.has_key("classes") else "values"
-                        results[key]=summaryFields["VALUE"].getResults()[key]
+                        results[key]=summaryFields[valueField].getResults()[key]
                     else:
                         for summaryField in summaryFields:
                             results["attributes"].append(summaryFields[summaryField].getResults())
