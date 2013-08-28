@@ -829,6 +829,9 @@ def tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference,message
         layerID = int(layerConfig["layerID"])
         if not (layerID >= 0 and layerID < len(layerPaths)):
             raise ValueError("LAYER_NOT_FOUND: Layer not found for layerID: %s" % (layerID))
+        logger.debug("Layer: %s ==> %s"%(layerID,layerPaths[layerID]))
+        if not arcpy.Exists(layerPaths[layerID]):
+            raise ValueError("LAYER_NOT_FOUND: Layer data source not found for layerID: %s"%(layerID))
         layer = arcpy.mapping.Layer(layerPaths[layerID])
         #TODO: handle layer definition specified in MXD / MSD
         try:

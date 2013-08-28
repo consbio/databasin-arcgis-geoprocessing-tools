@@ -189,6 +189,7 @@ def getDataPathsForService(serviceID):
         #doc info file contains pointer to layers XML file
         layersXMLPath=fromstring(msd.open("DocumentInfo.xml").read()).findtext("ActiveMapRepositoryPath").replace("CIMPATH=","")
         layers=extractLayerPathFromMSDLayerXML(msd,layersXMLPath)
+        layers.pop(0) #remove the root node for the map document
         msd.close()
 
     return layers
