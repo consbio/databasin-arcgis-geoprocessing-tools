@@ -156,8 +156,15 @@ def getDataPathsForService(serviceID):
 
     layers=[]
 
+    servicePath=""
+    if serviceID.count("/"):
+        lastIndex=serviceID.rfind("/")
+        servicePath=serviceID[:lastIndex]
+        serviceID=serviceID[(lastIndex+1):]
+    configJSONFilename=os.path.normpath(os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,servicePath,"%s.MapServer/%s.MapServer.json"%(serviceID,serviceID)))
+
     if settings.ARCGIS_VERSION=="10.0":
-        configFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%s.MapServer.cfg"%(serviceID))
+        configFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,servicePath,"%s.MapServer.cfg"%(serviceID))
         if not os.path.exists(configFilename):
             raise ReferenceError("Map service config file not found: %s, make sure the service is published and serviceID is valid"%(configFilename))
         infile=open(configFilename)
