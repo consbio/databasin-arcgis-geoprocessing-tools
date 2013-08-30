@@ -186,7 +186,7 @@ def getDataPathsForService(serviceID):
         from zipfile import ZipFile
 
         #json file contains pointer to MSD file
-        configJSONFilename=os.path.normpath(os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%s.MapServer/%s.MapServer.json"%(serviceID,serviceID)))
+        configJSONFilename=os.path.normpath(os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,servicePath,"%s.MapServer/%s.MapServer.json"%(serviceID,serviceID)))
         if not os.path.exists(configJSONFilename):
             raise ReferenceError("Map service config file not found: %s, make sure the service is published and serviceID is valid"%(configJSONFilename))
 
