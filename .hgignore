@@ -3,3 +3,5 @@ syntax: glob
 *.pyc
 tests/data/*
 docs/_build/*
+geoindex\geographic_regions.gdb\*
+*.pyt.xml
