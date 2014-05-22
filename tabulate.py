@@ -249,17 +249,23 @@ class SummaryField:
         if self.classes:
             classResults=[]
             for i in range(0,len(self.classes)):
-                classResult={"class":self.classes[i],"count":self.results[i].count}
+                classResult={
+                    'class': self.classes[i],
+                    'intersectionCount': self.results[i].count
+                }
                 if self.hasGeometry:
-                    classResult["quantity"]=self.results[i].quantity
+                    classResult["intersectionQuantity"] = self.results[i].quantity
                 classResults.append(classResult)
             fieldResults.update({'classes':classResults})
         else:
             valueResults=[]
             for key in self.results:
-                valueResult={"value":key,"count":self.results[key].count}
+                valueResult={
+                    'value': key,
+                    'intersectionCount': self.results[key].count
+                }
                 if self.hasGeometry:
-                    valueResult["quantity"]=self.results[key].quantity
+                    valueResult["intersectionQuantity"] = self.results[key].quantity
                 valueResults.append(valueResult)
             fieldResults.update({'values':valueResults})
         return fieldResults
@@ -296,12 +302,12 @@ def getNumpyValueQuantities(values,quantities):
     results=dict()
     for value in numpy.ma.unique(flat_values):
         equals_value = flat_values==value
-        count=equals_value.count()
+        count=equals_value.count()  #TODO: fix this to: count = numpy.count_nonzero(equals_value) or numpy.ma.count(equals_value) (the latter is probably more correct)
         if count:
             #mask values have count==0
             results[value]={
-                "count": count,
-                "quantity": (equals_value * flat_quantities).sum()
+                'intersectionCount': count,
+                'intersectedQuantity': (equals_value * flat_quantities).sum()
             }
     return results
 
@@ -323,9 +329,9 @@ def getNumpyClassQuantities(values,quantities,classBreaks):
         class_range=classBreaks[i]
         in_class = numpy.logical_and(values >= float(class_range[0]), values < float(class_range[1]))
         class_results.append({
-            "class":class_range,
-            "count":int(in_class.sum()),
-            "quantity": (in_class * quantities).sum()
+            'class': class_range,
+            'intersectionCount': int(in_class.sum()),
+            'intersectedQuantity': (in_class * quantities).sum()
         })
     return class_results
 
@@ -399,7 +405,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
     #     logger.debug("Could not set scratch workspace")
 
     results={
-        "geometryType":"pixel",
+        "intersectionGeometryType":"pixel",
         "intersectionQuantity":0,
         "method":"approximate"
     }
@@ -542,8 +548,8 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                         valueField=getGridValueField(projectedGrid)
                         for row in rows:
                             value=row.getValue(valueField)
-                            count=by_value_results[value]['count']
-                            quantity=by_value_results[value]['quantity']
+                            count=by_value_results[value]['intersectionCount']
+                            quantity=by_value_results[value]['intersectionQuantity']
                             for summaryField in summaryFields:
                                 summaryFields[summaryField].addRecord(row.getValue(summaryField),count,quantity)
                         del rows
@@ -558,7 +564,13 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                             unique_values=by_value_results.keys()
                             unique_values.sort()
                             for value in unique_values:
-                                value_results.append({"value":value,"count":by_value_results[value]['count'],"quantity":by_value_results[value]['quantity']})
+                                value_results.append(
+                                    {
+                                        'value': value,
+                                        'intersectionCount': by_value_results[value]['intersectionCount'],
+                                        'intersectionQuantity': by_value_results[value]['intersectionQuantity']
+                                    }
+                                )
                             results.update({'values':value_results})
         else:
             logger.debug("Large input grid or point input, using approximate method")
@@ -618,7 +630,10 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                         classResults=[]
                         for classIndex in range(0,len(layerConfig["classes"])):
                             count=classCounts.get(classIndex,0)
-                            classResults.append({"class":layerConfig["classes"][classIndex],"count":count,"quantity":(float(count)*pixelArea)})
+                            classResults.append({
+                                'class': layerConfig["classes"][classIndex],
+                                'intersectionCount': count,
+                                'intersectionQuantity': (float(count)*pixelArea)})
                         results.update({'classes':classResults})
 
                 else:
@@ -898,7 +913,7 @@ def tabulateMapServices(srcFC,config,messages):
         except:
             error=traceback.format_exc()
             logger.error("Error processing map service: %s\n%s"%(serviceID,error))
-            results["services"].append({"error":error})
+            results["services"].append({"serviceID": serviceID, "error": error})
         messages.incrementMajorStep()
 
     TEMP_WORKSPACE.delete()

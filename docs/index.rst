@@ -39,7 +39,7 @@ Supporting modules:
 
 Requirements
 ============
-* ArcGIS Server 10.0 to 10.1, including spatial analyst extension
+* ArcGIS Server 10.0 to 10.2.2, including spatial analyst extension
 * Published map services containing data to be operated against
 * Numpy 1.6.1 or later (note: ArcGIS 10 ships with older version that must be upgraded)
 
@@ -55,7 +55,7 @@ ArcGIS 10.0
 4. Clear the ArcGIS REST API cache (../rest/admin ->Clear Cache options ->  Clear Cache Now)
 
 
-ArcGIS 10.1
+ArcGIS 10.1 - 10.2.2
 -----------
 TODO
 
