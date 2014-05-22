@@ -4,7 +4,7 @@ Running tests:
 ArcGIS 10.0:
 publish data/10.0/test.mxd as a service called test
 
-ArcGIS 10.1
+ArcGIS 10.1+
 TODO
 
 """
@@ -93,17 +93,17 @@ def test_tabulateMapServices_polygon_aoi():
     layerResults=results['services'][0]['layers'][4]
     assert layerResults['layerID']==3
     assert layerResults['pixelArea']==0.090000000000000011
-    assert layerResults['geometryType']=="pixel"
+    assert layerResults['intersectionGeometryType']=="pixel"
     assert layerResults['sourcePixelCount']==124798
     assert layerResults['intersectionQuantity']==11231.820000000002
     assert layerResults['values'][0]['value']==1
-    assert layerResults['values'][0]['count']==24085
-    assert layerResults['values'][0]['quantity']==2167.6500000000001
+    assert layerResults['values'][0]['intersectionCount']==24085
+    assert layerResults['values'][0]['intersectionQuantity']==2167.6500000000001
 
     layerResults=results['services'][0]['layers'][6]
-    assert layerResults['classes'][0]['count']==67753
+    assert layerResults['classes'][0]['intersectionCount']==67753
     assert layerResults['classes'][0]['class']==[0,300]
-    assert layerResults['classes'][0]['quantity']==6097.7700000000004
+    assert layerResults['classes'][0]['intersectionQuantity']==6097.7700000000004
 
     layerResults=results['services'][0]['layers'][7]
     assert layerResults['statistics']['MAX']==378.656494140625
@@ -145,17 +145,17 @@ def test_tabulateMapServices_line_aoi():
     layerResults=results['services'][0]['layers'][4]
     assert layerResults['layerID']==3
     assert layerResults['pixelArea']==0.090000000000000011
-    assert layerResults['geometryType']=="pixel"
+    assert layerResults['intersectionGeometryType']=="pixel"
     assert layerResults['sourcePixelCount']==746
     assert layerResults['intersectionQuantity']==67.230000000000004
     assert layerResults['values'][0]['value']==1
-    assert layerResults['values'][0]['count']==209
-    assert layerResults['values'][0]['quantity']==18.810000000000002
+    assert layerResults['values'][0]['intersectionCount']==209
+    assert layerResults['values'][0]['intersectionQuantity']==18.810000000000002
 
     layerResults=results['services'][0]['layers'][6]
-    assert layerResults['classes'][0]['count']==387
+    assert layerResults['classes'][0]['intersectionCount']==387
     assert layerResults['classes'][0]['class']==[0,300]
-    assert layerResults['classes'][0]['quantity']==34.830000000000005
+    assert layerResults['classes'][0]['intersectionQuantity']==34.830000000000005
 
     layerResults=results['services'][0]['layers'][7]
     assert layerResults['statistics']['MAX']==347.89703369140625
@@ -193,18 +193,18 @@ def test_tabulateMapServices_point_aoi():
     layerResults=results['services'][0]['layers'][4]
     assert layerResults['layerID']==3
     assert layerResults['pixelArea']==0.090000000000000011
-    assert layerResults['geometryType']=="pixel"
+    assert layerResults['intersectionGeometryType']=="pixel"
     assert layerResults['sourcePixelCount']==3
     assert layerResults['intersectionCount']==3
     assert layerResults['intersectionQuantity']==0.18000000000000002
     assert layerResults['values'][0]['value']==2
-    assert layerResults['values'][0]['count']==1
-    assert layerResults['values'][0]['quantity']==0.090000000000000011
+    assert layerResults['values'][0]['intersectionCount']==1
+    assert layerResults['values'][0]['intersectionQuantity']==0.090000000000000011
 
     layerResults=results['services'][0]['layers'][6]
-    assert layerResults['classes'][0]['count']==1
+    assert layerResults['classes'][0]['intersectionCount']==1
     assert layerResults['classes'][0]['class']==[0,300]
-    assert layerResults['classes'][0]['quantity']==0.090000000000000011
+    assert layerResults['classes'][0]['intersectionQuantity']==0.090000000000000011
 
     layerResults=results['services'][0]['layers'][7]
     assert layerResults['statistics']['MAX']==313.635009765625
@@ -240,9 +240,9 @@ def test_tabulateMapServices_polygon_aoi_central_america():
     assert layerResults['sourcePixelCount']==6690
     assert layerResults['intersectionCount']==6690
     assert layerResults['intersectionQuantity']== 143628.12
-    assert layerResults['classes'][0]['count']==1258
+    assert layerResults['classes'][0]['intersectionCount']==1258
     assert layerResults['classes'][0]['class']==[0,50]
-    assert layerResults['classes'][0]['quantity']==26327.594158200533
+    assert layerResults['classes'][0]['intersectionQuantity']==26327.594158200533
 
     layerResults=results['services'][0]['layers'][2]
     assert layerResults['statistics']['MAX']==183.0
@@ -283,9 +283,9 @@ def test_tabulateMapServices_line_aoi_central_america():
     assert layerResults['sourcePixelCount']==209
     assert layerResults['intersectionCount']==209
     assert layerResults['intersectionQuantity']== 4464.8999999999996
-    assert layerResults['classes'][0]['count']==56
+    assert layerResults['classes'][0]['intersectionCount']==56
     assert layerResults['classes'][0]['class']==[0,50]
-    assert layerResults['classes'][0]['quantity']==21.863926123641736
+    assert layerResults['classes'][0]['intersectionQuantity']==21.863926123641736
 
     layerResults=results['services'][0]['layers'][2]
     assert layerResults['statistics']['MAX']==163.5
@@ -319,15 +319,15 @@ def test_tabulateMapServices_point_aoi_central_america():
     layerResults=results['services'][0]['layers'][1]
     assert layerResults['layerID']==1
     assert layerResults['pixelArea']==21.465867327051889
-    assert layerResults['geometryType']=="pixel"
+    assert layerResults['intersectionGeometryType']=="pixel"
     assert layerResults['sourcePixelCount']==1
     assert layerResults['intersectionCount']==1
     assert layerResults['intersectionQuantity']==layerResults['pixelArea']
     assert layerResults['method']=="approximate"
     assert len(layerResults['classes'])==4
-    assert layerResults['classes'][3]['count']==1
+    assert layerResults['classes'][3]['intersectionCount']==1
     assert layerResults['classes'][3]['class']==[100,150]
-    assert layerResults['classes'][3]['quantity']==layerResults['pixelArea']
+    assert layerResults['classes'][3]['intersectionQuantity']==layerResults['pixelArea']
 
     layerResults=results['services'][0]['layers'][2]
     assert layerResults['statistics']['MAX']==137.5
@@ -336,6 +336,8 @@ def test_tabulateMapServices_point_aoi_central_america():
     assert layerResults['statistics']['STD']==0.0
     assert layerResults['statistics']['SUM']==137.5
 
+
+test_tabulateMapServices_polygon_aoi()
 
 #Test case for single point handling
 # messages = MessageHandler(logger=logger)
@@ -351,3 +353,7 @@ def test_tabulateMapServices_point_aoi_central_america():
 # """)
 # results = tabulateMapServices(srcFC,config,messages)
 # print json.dumps(results,indent=1)
+
+#{"displayFieldName":"","geometryType":"esriGeometryPolygon","spatialReference":{"wkid":102100,"latestWkid":3857},"fields":[{"name":"OBJECTID","type":"esriFieldTypeOID","alias":"OBJECTID"},{"name":"SHAPE_Length","type":"esriFieldTypeDouble","alias":"SHAPE_Length"},{"name":"SHAPE_Area","type":"esriFieldTypeDouble","alias":"SHAPE_Area"}],"features":[{"attributes":{"OBJECTID":3,"SHAPE_Length":49763.191463275194,"SHAPE_Area":161738984.17682847},"geometry":{"rings":[[[-12510743.8804,3962356.0276999995],[-12500772.095800001,3955536.6137000024],[-12509264.1962,3945822.1655000001],[-12510936.8827,3944921.4880999997],[-12513381.578299999,3946015.1677000001],[-12517112.955699999,3957466.636500001],[-12514925.5965,3960040.0002999976],[-12510743.8804,3962356.0276999995]]]}}]}
+
+#{"services":[{"serviceID":"Catalog/test2","layers":[{"layerID":0},{"layerID":3}]}]}

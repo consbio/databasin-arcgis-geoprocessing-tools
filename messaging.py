@@ -3,7 +3,7 @@ import arcpy
 class MessageHandler:
     """
     Convenience class for handling messaging between versions of ArcGIS.  Uses messages object bound to geoprocessing tool
-    in ArcGIS 10.1, and falls back to arcpy.AddMessage otherwise.
+    in ArcGIS 10.1+, and falls back to arcpy.AddMessage otherwise.
 
     Includes a concept of progress, which is a measure of number of completed major and minor steps.
 
@@ -13,7 +13,7 @@ class MessageHandler:
 
     def __init__(self,messages=None,logger=None):
         """
-        messages are only supported in ArcGIS 10.1
+        messages are only supported in ArcGIS 10.1+
         """
 
         self.messages=messages

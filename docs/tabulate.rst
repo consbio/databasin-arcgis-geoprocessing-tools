@@ -155,7 +155,7 @@ During execution, the tool will add a progress message for each completed layer 
     *Key concepts:*
 
     * Very little is returned if no intersection is found.  Generally only count properties will be returned in this case.
-    * Areas and lengths are returned using the general "quantity" properties.
+    * Areas and lengths are returned using the general "intersectionQuantity" properties.
       Use the geometryType properties to determine what units these represent.  Quantities will not be returned for points.
     * An important distinction is made between intersected and intersection results for features:
 
@@ -270,28 +270,28 @@ During execution, the tool will add a progress message for each completed layer 
                             "values": [
                                 {
                                     "value": 1,
-                                    "count": 24090,
-                                    "quantity": 2168.0999999999999
+                                    "intersectionCount": 24090,
+                                    "intersectionQuantity": 2168.0999999999999
                                 },
                                 {
                                     "value": 2,
-                                    "count": 38736,
-                                    "quantity": 3486.2399999999998
+                                    "intersectionCount": 38736,
+                                    "intersectionQuantity": 3486.2399999999998
                                 },
                                 {
                                     "value": 3,
-                                    "count": 44753,
-                                    "quantity": 4027.77
+                                    "intersectionCount": 44753,
+                                    "intersectionQuantity": 4027.77
                                 },
                                 {
                                     "value": 4,
-                                    "count": 17088,
-                                    "quantity": 1537.9199999999998
+                                    "intersectionCount": 17088,
+                                    "intersectionQuantity": 1537.9199999999998
                                 },
                                 {
                                     "value": 5,
-                                    "count": 129,
-                                    "quantity": 11.609999999999999
+                                    "intersectionCount": 129,
+                                    "intersectionQuantity": 11.609999999999999
                                 }
                             ]
                         },
@@ -311,18 +311,18 @@ During execution, the tool will add a progress message for each completed layer 
                             "classes": [
                                 {
                                     "class": [0,300],
-                                    "count": 67863,
-                                    "quantity": 6107.6700000000001
+                                    "intersectionCount": 67863,
+                                    "intersectionQuantity": 6107.6700000000001
                                 },
                                 {
                                     "class": [300,310],
-                                    "count": 38677,
-                                    "quantity": 3480.9299999999998
+                                    "intersectionCount": 38677,
+                                    "intersectionQuantity": 3480.9299999999998
                                 },
                                 {
                                     "class": [310,400],
-                                    "count": 18256,
-                                    "quantity": 1643.04
+                                    "intersectionCount": 18256,
+                                    "intersectionQuantity": 1643.04
                                 }
                             ],
                             "geometryType": "pixel",

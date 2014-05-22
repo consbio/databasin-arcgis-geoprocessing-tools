@@ -1,5 +1,5 @@
 """
-ArcGIS 10.1 Python Toolbox for geoprocessing tools
+ArcGIS 10.1+ Python Toolbox for geoprocessing tools
 """
 
 
@@ -16,7 +16,7 @@ class Toolbox(object):
 
 class TabulateTool(object):
     def __init__(self):
-        self.label = "Tabulate Tool"
+        self.label = "tabulate"
         self.description = "Tabulate intersection area, length, count for target feature and raster datasets in a published map service within area of interest (represented by featureSetJSON)"
         self.canRunInBackground = False
 

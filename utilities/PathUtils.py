@@ -99,7 +99,7 @@ def getMXDPathForService(serviceID):
         infile.close()
         return os.path.normpath(re.search("(?<=<FilePath>).*?(?=</FilePath>)",xml).group().strip())
 
-    elif settings.ARCGIS_VERSION=="10.1":
+    else:
         import json
         configJSONFilename=os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,"%s.MapServer/%s.MapServer.json"%(serviceID,serviceID))
         if not os.path.exists(configJSONFilename):
@@ -180,7 +180,7 @@ def getDataPathsForService(serviceID):
         del mapDoc
 
 
-    elif settings.ARCGIS_VERSION=="10.1": #Not yet tested!
+    else: #Not yet tested!
         import json
         from xml.etree.ElementTree import fromstring
         from zipfile import ZipFile
