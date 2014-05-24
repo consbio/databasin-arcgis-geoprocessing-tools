@@ -259,7 +259,9 @@ class SummaryField:
             fieldResults.update({'classes':classResults})
         else:
             valueResults=[]
-            for key in self.results:
+            keys = self.results.keys()
+            keys.sort()
+            for key in keys:
                 valueResult={
                     'value': key,
                     'intersectionCount': self.results[key].count
@@ -297,17 +299,35 @@ def getNumpyValueQuantities(values,quantities):
     """
 
     import numpy
-    flat_values=values.flatten()
-    flat_quantities=quantities.flatten()
+    flat_values = values.ravel()
+    flat_quantities = quantities.ravel()
     results=dict()
-    for value in numpy.ma.unique(flat_values):
-        equals_value = flat_values==value
-        count=equals_value.count()  #TODO: fix this to: count = numpy.count_nonzero(equals_value) or numpy.ma.count(equals_value) (the latter is probably more correct)
-        if count:
-            #mask values have count==0
-            results[value]={
-                'intersectionCount': count,
-                'intersectedQuantity': (equals_value * flat_quantities).sum()
+    if str(flat_values.dtype).count("ui") or flat_values.min() > 0:
+        logger.debug("Tallying unique values using bincount method")
+        # Bincount is preferred, performant method but only works for positive integers
+        if flat_values.mask.shape:
+            # Remove masked values or they get into calculation
+            valid = flat_values.mask==False
+            flat_values = flat_values[valid]
+            flat_quantities = flat_quantities[valid]
+
+        b_quantity = numpy.bincount(flat_values, weights=flat_quantities)
+        b_count = numpy.bincount(flat_values)
+        nonzero_indices = numpy.flatnonzero(b_count)
+        tally = numpy.vstack((nonzero_indices, b_count[nonzero_indices], b_quantity[nonzero_indices])).T
+        for result in tally:
+            results[int(result[0])] = {
+                'intersectionCount': int(result[1]),
+                'intersectionQuantity': float(result[2])
+            }
+    else:
+        logger.debug("Tallying unique values using looping method")
+        unique = numpy.ma.unique(flat_values)
+        for value in unique[unique.mask==False]:
+            equals_value = flat_values==value
+            results[value] = {
+                'intersectionCount': numpy.ma.sum(equals_value),
+                'intersectionQuantity': numpy.ma.sum(flat_quantities[equals_value])
             }
     return results
 
@@ -466,10 +486,18 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
 
             logger.debug("Tabulating quantities")
-            values = arcpy.RasterToNumPyArray(projectedGrid,nodata_to_value=numpy.nan)
+            fix_nodata = False
+            try:
+                # This fails on ArcGIS 10.0 server for integer grids.  TODO: remove when no longer applicable
+                values = arcpy.RasterToNumPyArray(projectedGrid, nodata_to_value=numpy.nan)
+            except ValueError:
+                logger.debug("Could not apply nodata directly to numpy array as numpy.nan, masking later")
+                values = arcpy.RasterToNumPyArray(projectedGrid)
+                fix_nodata = True
             quantities=numpy.zeros(values.shape)
             quantityAttribute=srcFC.getQuantityAttribute()
             areaLengthFactor=0
+            totalQuantity = 0.0
             if srcFC.getGeometryType()=="Polyline":
                 areaLengthFactor = ProjectionUtilities.getProjUnitFactors(spatialReference)[0]
             elif srcFC.getGeometryType()=="Polygon":
@@ -478,16 +506,25 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
             for row in rows:
                 OID=row.getValue("FID_%s"%(os.path.split(fishnet)[1]))
                 grid_row,grid_col=FishnetOIDToNumpy(OID,projectedGrid.height,projectedGrid.width)
-                quantities[grid_row][grid_col]+=getattr(row.shape,quantityAttribute) * areaLengthFactor
+                quantity = getattr(row.shape, quantityAttribute) * areaLengthFactor
+                totalQuantity += quantity
+                quantities[grid_row][grid_col] += quantity
+
             del row,rows
             arcpy.Delete_management(fishnet)
             del fishnet
             arcpy.Delete_management(intersection)
             del intersection
 
-            values = numpy.ma.masked_array(values,numpy.logical_or(numpy.isnan(values), quantities==0)) #mask out the original NoData values and areas outside AOI
+            #mask out the original NoData values and areas outside AOI
+            if fix_nodata:
+                d = arcpy.Describe(projectedGrid)
+                logger.debug("Masking out nodata value: %s" % d.nodataValue)
+                values = numpy.ma.masked_array(values, mask=numpy.logical_or(values==d.nodataValue, quantities==0))
+            else:
+                values = numpy.ma.masked_array(values, mask=numpy.logical_or(numpy.isnan(values), quantities==0))
             results["intersectionCount"] = (values.mask==False).sum()
-            results["intersectionQuantity"] = round((results["intersectionCount"]) * pixelArea,2)
+            results["intersectionQuantity"] = totalQuantity
             results["sourcePixelCount"] = (quantities!=0).sum() #Note: this will not be accurate if AOI falls outside extent of raster
 
             src_total_quantity=srcFC.getTotalAreaOrLength(spatialReference)
@@ -546,13 +583,17 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
 
                         rows = arcpy.SearchCursor(projectedGrid)
                         valueField=getGridValueField(projectedGrid)
+
                         for row in rows:
                             value=row.getValue(valueField)
-                            count=by_value_results[value]['intersectionCount']
-                            quantity=by_value_results[value]['intersectionQuantity']
-                            for summaryField in summaryFields:
-                                summaryFields[summaryField].addRecord(row.getValue(summaryField),count,quantity)
+                            if value in by_value_results:
+                                #Values will be absent if outside the analysis area
+                                count=by_value_results[value]['intersectionCount']
+                                quantity=by_value_results[value]['intersectionQuantity']
+                                for summaryField in summaryFields:
+                                    summaryFields[summaryField].addRecord(row.getValue(summaryField), count, quantity)
                         del rows
+                        results['attributes'] = []
                         for summaryField in summaryFields:
                             results["attributes"].append(summaryFields[summaryField].getResults())
 
@@ -560,9 +601,9 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                         if layerConfig.has_key("classes"):
                             results.update({'classes':getNumpyClassQuantities(values,quantities,layerConfig["classes"])})
                         else:
-                            value_results=[]
-                            unique_values=by_value_results.keys()
+                            unique_values = by_value_results.keys()
                             unique_values.sort()
+                            value_results=[]
                             for value in unique_values:
                                 value_results.append(
                                     {
@@ -678,6 +719,7 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
             del aoiGrid
 
             results["intersectionQuantity"] = float(results["intersectionCount"]) * pixelArea
+
         try:
             arcpy.Delete_management(clippedGrid) #this is causing issues on server, maybe getting deleted too soon? TODO: create a delete tool that runs in a try-catch block
         except:
