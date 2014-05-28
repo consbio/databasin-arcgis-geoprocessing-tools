@@ -176,10 +176,9 @@ class SummaryResult:
     def __init__(self):
         self.count=0
         self.quantity=0 #quantity is area / length if applicable
-    def update(self,count,quantity=None):
+    def update(self,count,quantity=0):
         self.count+=count
-        if quantity:
-            self.quantity+=quantity
+        self.quantity+=quantity
 
 
 class SummaryField:
@@ -189,9 +188,9 @@ class SummaryField:
 
     def __init__(self,fieldJSON,hasGeometry=False):
         self.attribute=fieldJSON["attribute"]
+        self.classes=fieldJSON.get("classes",[])
         self.statistics=fieldJSON.get("statistics",[])
         self.results=dict()
-        self.classes=fieldJSON.get("classes",[])
         self._classRanges=[]
         for i in range(0,len(self.classes)):
             classRange=self.classes[i]
@@ -246,7 +245,7 @@ class SummaryField:
         fieldResults={'attribute':self.attribute}
         if self.statistics:
             fieldResults["statistics"]=self.getStatistics(self.statistics)
-        if self.classes:
+        elif self.classes:
             classResults=[]
             for i in range(0,len(self.classes)):
                 classResult={
@@ -552,11 +551,13 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                 else:
                     pixel_proportion=quantities / pixelArea
                     weighted_values = values * pixel_proportion #weighted by proportion of each pixel occupied, assuming equal distribution within pixels
-                    if "MIN" in layerConfig["statistics"]:
-                        results["statistics"]["WEIGHTED_MIN"]=round(weighted_values.min(),2)
-                    if "MAX" in layerConfig["statistics"]:
-                        results["statistics"]["WEIGHTED_MAX"]=round(weighted_values.max(),2)
+                    # Not applicable?
+                    # if "MIN" in layerConfig["statistics"]:
+                    #     results["statistics"]["WEIGHTED_MIN"]=round(weighted_values.min(),2)
+                    # if "MAX" in layerConfig["statistics"]:
+                    #     results["statistics"]["WEIGHTED_MAX"]=round(weighted_values.max(),2)
                     if "MEAN" in layerConfig["statistics"]:
+                        logger.debug("Weighted mean: %.4f %.4f" %(weighted_values.sum() / pixel_proportion.sum(), weighted_values.mean()))
                         results["statistics"]["WEIGHTED_MEAN"]=round(weighted_values.sum() / pixel_proportion.sum(),2)
                     if "STD" in layerConfig["statistics"]:
                         results["statistics"]["WEIGHTED_STD"]=round(weighted_values.std(),2)
@@ -579,7 +580,10 @@ def tabulateRasterLayer(srcFC,layer,layerConfig,spatialReference,messages):
                         summaryFields=dict([(summaryField["attribute"],SummaryField(summaryField,True)) for summaryField in layerConfig.get("attributes",[])])
                         diffFields = set(summaryFields.keys()).difference(fields)
                         if diffFields:
-                            raise ValueError("FIELD_NOT_FOUND: Fields do not exist in layer %s: %s"%(layer.name,",".join([str(fieldName) for fieldName in diffFields])))
+                            raise ValueError(
+                                "FIELD_NOT_FOUND: Fields do not exist in layer %s: %s\nThese fields are present: %s"
+                                % (layer.name, ",".join([str(fieldName) for fieldName in diffFields]), ",".join(fields))
+                            )
 
                         rows = arcpy.SearchCursor(projectedGrid)
                         valueField=getGridValueField(projectedGrid)

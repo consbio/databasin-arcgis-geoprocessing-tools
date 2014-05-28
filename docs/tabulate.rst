@@ -361,5 +361,19 @@ This tool will almost always return successfully, because it is trapping and ret
 These will be include the python stacktrace of the error to assist debugging.  Additional information may be present in the
 logs to indicate the problem.
 
+Example error:
+
+{
+    "sourceFeatureQuantity": 13361.473722256975,
+    "sourceGeometryType": "polygon",
+    "sourceFeatureCount": 1,
+    "services": [
+        {
+            "error": "Traceback (most recent call last): File \"C:\\databasin_app\\databasin_arcgis_geoprocessing_tools\\tabulate.py\", line 897, in tabulateMapServices results[\"services\"].append(tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference,messages)) File \"C:\\databasin_app\\databasin_arcgis_geoprocessing_tools\\tabulate.py\", line 827, in tabulateMapService layerPaths = getDataPathsForService(serviceID) File \"C:\\databasin_app\\databasin_arcgis_geoprocessing_tools\\utilities\\PathUtils.py\", line 169, in getDataPathsForService raise ReferenceError(\"Map service config file not found: %s, make sure the service is published and serviceID is valid \"%(configFilename)) ReferenceError: Map service config file not found: C:\\ProgramFiles(x86)\\ArcGIS\\Server10.0\\server\\user\\cfg\\A919f6316315548c4b047112b982cb00a.MapServer.cfg, make sure the service is published and serviceID is valid"
+        }
+    ], "linear_units": "kilometers",
+    "area_units": "hectares"
+}
+
 
 
