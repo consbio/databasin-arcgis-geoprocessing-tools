@@ -9,10 +9,28 @@ TODO
 
 """
 
-import settings
-from tabulate import *
+import json
+import arcpy
+import os
+import sys
+import tempfile
+import logging
+
+sys.path.insert(0, ".") # make sure that our current working directory (if exec. from base of this package) is in search path
+
+from tabulate import tabulateMapServices
 from utilities.FeatureSetConverter import createFeatureClass
+from utilities.feature_class_wrapper import FeatureClassWrapper
 from messaging import MessageHandler
+
+
+logger = logging.getLogger(__name__)
+logger.debug("Test tabulate started")
+
+# setup scratch space
+arcpy.env.scratchWorkspace = os.path.normpath(tempfile.mkdtemp())
+arcpy.CreateFileGDB_management(arcpy.env.scratchWorkspace, "scratch.gdb")
+
 
 #Test in US - tests approximate raster method
 POLYGON_JSON="""{"displayFieldName":"","geometryType":"esriGeometryPolygon","spatialReference":{"wkid":102100,"latestWkid":3857},"fields":[{"name":"OBJECTID","type":"esriFieldTypeOID","alias":"OBJECTID"},{"name":"SHAPE_Length","type":"esriFieldTypeDouble","alias":"SHAPE_Length"},{"name":"SHAPE_Area","type":"esriFieldTypeDouble","alias":"SHAPE_Area"}],"features":[{"attributes":{"OBJECTID":3,"SHAPE_Length":49763.191463275194,"SHAPE_Area":161738984.17682847},"geometry":{"rings":[[[-12510743.8804,3962356.0276999995],[-12500772.095800001,3955536.6137000024],[-12509264.1962,3945822.1655000001],[-12510936.8827,3944921.4880999997],[-12513381.578299999,3946015.1677000001],[-12517112.955699999,3957466.636500001],[-12514925.5965,3960040.0002999976],[-12510743.8804,3962356.0276999995]]]}}]}"""
@@ -51,9 +69,16 @@ CONFIG_JSON_CENTRAL_AMERICA="""
 """
 
 
+class TestMessageHandler(object):
+    """Testing handler for arcpy messages"""    
+    def addMessage(self, message):
+        pass
+
+MOCK_MESSAGES = TestMessageHandler()
+
 
 def test_tabulateMapServices_polygon_aoi():
-    messages = MessageHandler(logger=logger)
+    messages = MessageHandler(messages=MOCK_MESSAGES, logger=logger)
     arcpy.Delete_management("IN_MEMORY/")
     srcFC = FeatureClassWrapper(createFeatureClass(POLYGON_JSON))
     config=json.loads(CONFIG_JSON)
@@ -114,7 +139,7 @@ def test_tabulateMapServices_polygon_aoi():
 
 
 def test_tabulateMapServices_line_aoi():
-    messages = MessageHandler(logger=logger)
+    messages = MessageHandler(messages=MOCK_MESSAGES, logger=logger)
     arcpy.Delete_management("IN_MEMORY/")
     srcFC = FeatureClassWrapper(createFeatureClass(LINE_JSON))
     config=json.loads(CONFIG_JSON)
@@ -166,7 +191,7 @@ def test_tabulateMapServices_line_aoi():
 
 
 def test_tabulateMapServices_point_aoi():
-    messages = MessageHandler(logger=logger)
+    messages = MessageHandler(messages=MOCK_MESSAGES, logger=logger)
     arcpy.Delete_management("IN_MEMORY/")
     srcFC = FeatureClassWrapper(createFeatureClass(POINT_JSON))
     config=json.loads(CONFIG_JSON)
@@ -215,7 +240,7 @@ def test_tabulateMapServices_point_aoi():
 
 
 def test_tabulateMapServices_polygon_aoi_central_america():
-    messages = MessageHandler(logger=logger)
+    messages = MessageHandler(messages=MOCK_MESSAGES, logger=logger)
     arcpy.Delete_management("IN_MEMORY/")
     srcFC = FeatureClassWrapper(createFeatureClass(POLYGON_JSON_CENTRAL_AMERICA))
     config=json.loads(CONFIG_JSON_CENTRAL_AMERICA)
@@ -258,7 +283,7 @@ def test_tabulateMapServices_polygon_aoi_central_america():
 
 
 def test_tabulateMapServices_line_aoi_central_america():
-    messages = MessageHandler(logger=logger)
+    messages = MessageHandler(messages=MOCK_MESSAGES, logger=logger)
     arcpy.Delete_management("IN_MEMORY/")
     srcFC = FeatureClassWrapper(createFeatureClass(LINE_JSON_CENTRAL_AMERICA))
     config=json.loads(CONFIG_JSON_CENTRAL_AMERICA)
@@ -297,7 +322,7 @@ def test_tabulateMapServices_line_aoi_central_america():
 
 
 def test_tabulateMapServices_point_aoi_central_america():
-    messages = MessageHandler(logger=logger)
+    messages = MessageHandler(messages=MOCK_MESSAGES, logger=logger)
     arcpy.Delete_management("IN_MEMORY/")
     srcFC = FeatureClassWrapper(createFeatureClass(POINT_JSON_CENTRAL_AMERICA))
     config=json.loads(CONFIG_JSON_CENTRAL_AMERICA)
@@ -340,7 +365,7 @@ def test_tabulateMapServices_point_aoi_central_america():
 test_tabulateMapServices_polygon_aoi()
 
 #Test case for single point handling
-# messages = MessageHandler(logger=logger)
+# messages = MessageHandler(messages=MOCK_MESSAGES, logger=logger)
 # arcpy.Delete_management("IN_MEMORY/")
 # srcFC = FeatureClassWrapper(createFeatureClass(POINT_JSON_CENTRAL_AMERICA))
 # config=json.loads("""

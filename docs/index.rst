@@ -39,23 +39,14 @@ Supporting modules:
 
 Requirements
 ============
-* ArcGIS Server 10.0 to 10.2.2, including spatial analyst extension
+* ArcGIS Server 10.2.x, including spatial analyst extension
 * Published map services containing data to be operated against
-* Numpy 1.6.1 or later (note: ArcGIS 10 ships with older version that must be upgraded)
+
 
 Installation
 ============
-ArcGIS 10.0
------------
-1. Place the source files in a directory for which ArcGIS Server has at least read access.
-2. Update settings in settings.py
-3. Publish the toolbox "tools.tbx" as a geoprocessing service with the name "databasin_arcgis_geoprocessing_tools"
-    * set "Execution Type" to Asynchronous
-    * enable the "Show Messages" checkbox
-4. Clear the ArcGIS REST API cache (../rest/admin ->Clear Cache options ->  Clear Cache Now)
 
-
-ArcGIS 10.1 - 10.2.2
+ArcGIS 10.2.x
 -----------
 TODO
 
@@ -84,7 +75,7 @@ Contact: databasinadmin at consbio dot org
 
 License
 =======
-Copyright (c) 2013, Conservation Biology Institute
+Copyright (c) 2014, Conservation Biology Institute
 
 All rights reserved.
 
