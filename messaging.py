@@ -2,8 +2,7 @@ import arcpy
 
 class MessageHandler:
     """
-    Convenience class for handling messaging between versions of ArcGIS.  Uses messages object bound to geoprocessing tool
-    in ArcGIS 10.1+, and falls back to arcpy.AddMessage otherwise.
+    Convenience class for handling messaging.
 
     Includes a concept of progress, which is a measure of number of completed major and minor steps.
 
@@ -11,11 +10,7 @@ class MessageHandler:
     steps, and the number of layers is the number of minor steps (represents loop-within-loop hierarchy).
     """
 
-    def __init__(self,messages=None,logger=None):
-        """
-        messages are only supported in ArcGIS 10.1+
-        """
-
+    def __init__(self,messages,logger=None):
         self.messages=messages
         self.logger=logger
         self.major_step=0
@@ -89,10 +84,7 @@ class MessageHandler:
 
         if message!=self._last_message:
             self._last_message=message
-            if self.messages:
-                self.messages.addMessage(message)
-            else:
-                arcpy.AddMessage(message)
+            self.messages.addMessage(message)
             if self.logger:
                 self.logger.debug(message)
 

@@ -1,11 +1,19 @@
 """
-ArcGIS 10.1+ Python Toolbox for geoprocessing tools
+ArcGIS 10.2.x Python Toolbox for geoprocessing tools
 """
 
 
 import arcpy
-from tabulate import *
+import json
+import logging
 
+import tool_logging  # must be called early to init logging
+from utilities import FeatureSetConverter
+from utilities.feature_class_wrapper import FeatureClassWrapper
+from tabulate import tabulateMapServices
+
+
+logger = logging.getLogger(__name__)
 
 class Toolbox(object):
     def __init__(self):
@@ -17,7 +25,8 @@ class Toolbox(object):
 class TabulateTool(object):
     def __init__(self):
         self.label = "tabulate"
-        self.description = "Tabulate intersection area, length, count for target feature and raster datasets in a published map service within area of interest (represented by featureSetJSON)"
+        self.description = """Tabulate intersection area, length, count for target feature and raster datasets in a
+        published map service within area of interest (represented by featureSetJSON)"""
         self.canRunInBackground = False
 
     def getParameterInfo(self):
@@ -28,11 +37,9 @@ class TabulateTool(object):
         arcpy.Parameter(displayName="Results (JSON)",name="resultsJSON",datatype="String",
                         parameterType="Derived",direction="Output")]
 
-
     def execute(self, parameters, messages):
-        messageHandler = MessageHandler(logger=logger,messages=messages)
         srcFC=FeatureClassWrapper(FeatureSetConverter.createFeatureClass(parameters[0].valueAsText))
         config=json.loads(parameters[1].valueAsText)
-        results = json.dumps(tabulateMapServices(srcFC,config,messageHandler))
-        parameters[2].value=results
+        results = tabulateMapServices(srcFC,config,messages)
+        parameters[2].value = json.dumps(results)
         return

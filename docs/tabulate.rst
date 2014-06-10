@@ -8,7 +8,8 @@ This tool tabulates various summary values for feature or raster datasets within
 interest can be represented as one or more points, lines, or polygons (limited to one type of geometry per analysis).
 
 This tool creates a custom Albers Equal Area (WGS84 datum) projection centered over the area of interest to use as the
-standard throughout processing.  This helps ensure that areas are comparable between source features, target features, and target rasters.
+standard throughout processing; however, the native projection of the target dataset will be used if it is an equal-area
+projection, such as Albers Equal-Area, Lambert Azimuthal Equal-Area, or UTM.
 
 For raster analysis, the tool uses one of two methods:
 
@@ -19,10 +20,7 @@ the number of pixels in the extent of the area of interest is higher than optima
 
 2) precise: the raster is extracted to the extent of the area of interest in its native projection, and then a fishnet
 feature class is created that matches it.  This fishnet is then intersected with the area of interest, and proportional
-areas of overlap area calculated as weights for each pixel.  These weights can then used for either area weighted statistics,
-with the assumption that values within the pixels are equally distributed and can be subdivided (new value = proportion of
-overlap * original value).  This assumption may not be appropriate in all cases, so exercise caution when interpreting
-the weighted results.
+areas of overlap area calculated as weights for each pixel.  These weights can then used for either area weighted statistics.
 
 
 
@@ -37,6 +35,10 @@ Available Summary Methods
 * area or length and count of features by classes of a continuous attribute
 * statistics of a continuous attribute inside area of interest: MIN, MAX, SUM, MEAN
 
+    Note: MEAN is always weighted by the polygon area, line length, or point count of the target features within the
+    area of interest.
+
+
 *Raster layers*
 
 * area and pixel count of area of interest in resolution of target raster
@@ -45,16 +47,8 @@ Available Summary Methods
 * area and pixel count of classes of a continuous raster or raster attribute inside area of interest
 * statistics of raster or continuous attribute inside area of interest. Valid statistics are: MIN, MAX, SUM, MEAN, STD (standard deviation).
 
-    Can include these statistics if precise method is used and area of interest is a polygon:
-
-    * WEIGHTED_MIN: min of original pixel values * proportion overlap per pixel
-    * WEIGHTED_MAX: max of original pixel values * proportion overlap per pixel
-    * WEIGHTED_SUM: sum of original pixel values * proportion overlap per pixel
-    * WEIGHTED_MEAN: mean of original pixel values * proportion overlap per pixel
-    * WEIGHTED_STD: standard deviation of original pixel values * proportion overlap per pixel
-
-    Can include WEIGHTED_MEAN (sum of original pixel values * proportion of area of interest in each pixel) if
-    precise method is used and area of interest is a line.
+    Note: If the precise method is used, MEAN is weighted by the proportion of each pixel occupied by the area of
+    interest if it is a polygon, or by the proportional length if area of interset is a line.
 
 
 Inputs

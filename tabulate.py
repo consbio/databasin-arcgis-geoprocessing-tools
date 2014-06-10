@@ -13,12 +13,9 @@ TODOC:
 - custom albers projection
 
 """
-from tool_logging import ToolLogger
 
-logger = ToolLogger.getLogger("tabulate")
-logger.debug("Tabulate started")
-
-import os, sys, tempfile, time, traceback, shutil, json, re, copy
+import os, sys, time, traceback, copy, logging
+import numpy
 
 if __name__ == "__main__":
     #Make sure we're using the ArcGIS server (as opposed to the Desktop) arcpy package.
@@ -26,154 +23,19 @@ if __name__ == "__main__":
         sys.path.insert(0, path)
 
 import arcpy
+
 from utilities import ProjectionUtilities
-from utilities.PathUtils import TemporaryWorkspace, getDataPathsForService
+from utilities.feature_class_wrapper import FeatureClassWrapper
+from utilities.PathUtils import getDataPathsForService, get_scratch_GDB
+from messaging import MessageHandler
 
 
+logger = logging.getLogger(__name__)
 
 #Setup environment variables
 arcpy.env.overwriteOutput = True
 arcpy.env.pyramid = "NONE"
 arcpy.env.rasterStatistics = "NONE"  #we will calculate these manually as required
-
-#Setup globals
-#logger = ToolLogger.getLogger("tabulate")
-TEMP_WORKSPACE = TemporaryWorkspace()
-
-
-class FeatureClassWrapper:
-    """
-    convenience class to provide cached access to descriptive properties and projected variants of feature class
-    """
-
-    def __init__(self, featureClass):
-        self.featureClass = featureClass
-        self.name = os.path.split(self.featureClass)[1]
-        #internal attributes, only fetch as necessary since initial lookup time may be slow
-        self._info = None
-        self._geometryType = None
-        self._spatialReference = None
-        self._numFeatures = None
-        self._prjLUT = dict()
-        self._prjCache = dict()
-        self._extentPrjCache = dict()
-
-
-    def getCount(self):
-        if self._numFeatures is None:
-            self._numFeatures = int(arcpy.GetCount_management(self.featureClass).getOutput(0))
-        return self._numFeatures
-
-    #Can also get from cursor - what do we get first?
-    def getGeometryType(self):
-        if self._geometryType is None:
-            self._geometryType = self._getInfo().shapeType
-        return self._geometryType
-
-    def getSpatialReference(self):
-        if self._spatialReference is None:
-            self._spatialReference = self._getInfo().spatialReference
-        return self._spatialReference
-
-    def getExtent(self, targetSpatialReference=None, projectFeaturesFirst=False):
-        if targetSpatialReference is None:
-            return self._getInfo().extent
-        projKey = self._getProjID(targetSpatialReference)
-        if not self._extentPrjCache.has_key(projKey):
-            #cache existing
-            projectionKey = "%s_%s" % (self.name, projKey)
-            if self._prjCache.has_key(projectionKey):
-                #use previously projected version
-                self._extentPrjCache[projKey] = arcpy.mapping.Layer(self._prjCache[projectionKey]).getExtent()
-            elif projectFeaturesFirst:
-                self.project(targetSpatialReference)
-                self._extentPrjCache[projKey] = arcpy.mapping.Layer(self._prjCache[projectionKey]).getExtent()
-            else:
-                self._extentPrjCache[projKey] = ProjectionUtilities.projectExtent(self._getInfo().extent,
-                                                                                  TEMP_WORKSPACE.getGDB(),
-                                                                                  self.getSpatialReference(),
-                                                                                  targetSpatialReference)
-        return self._extentPrjCache[projKey]
-
-
-    def _getInfo(self):
-        if self._info is None:
-            self._info = arcpy.Describe(self.featureClass)
-        return self._info
-
-    def _getProjID(self, spatialReference):
-        key = spatialReference.factoryCode
-        if not key:
-            key = "hash%s" % (hash(spatialReference.exportToString()))
-        if not self._prjLUT.has_key(key):
-            self._prjLUT[key] = len(self._prjLUT.keys())
-        return self._prjLUT[key]
-
-    def project(self, targetSpatialReference):
-        projKey = "%s_%s" % (self.name, self._getProjID(targetSpatialReference))
-
-        if not self._prjCache.has_key(projKey):
-            fcPath = str(self.featureClass)
-            if fcPath.count("IN_MEMORY/"):  #need to persist or it will fail during projection steps
-                logger.debug("Persisting feature class to temporary geodatabase")
-                newFCPath = os.path.normpath(fcPath.replace("IN_MEMORY", TEMP_WORKSPACE.getGDB()))
-                if arcpy.Exists(newFCPath):
-                    arcpy.Delete_management(newFCPath)
-                arcpy.CopyFeatures_management(self.featureClass, newFCPath)
-                self.featureClass = newFCPath
-
-            if not self._prjCache:
-                #cache current projection
-                existingPrjKey = "%s_%s" % (self.name, self._getProjID(self.getSpatialReference()))
-                self._prjCache[existingPrjKey] = self.featureClass
-                if projKey == existingPrjKey:
-                    return self.featureClass
-
-            #targetProjLabel = targetSpatialReference.factoryCode or targetSpatialReference.exportToString()
-            projFCPath = os.path.join(TEMP_WORKSPACE.getGDB(), projKey)
-            if arcpy.Exists(projFCPath):
-                arcpy.Delete_management(projFCPath)
-            geoTransform = ProjectionUtilities.getGeoTransform(self.getSpatialReference(), targetSpatialReference)
-            #logger.debug("Projecting %s to %s using transform %s"%(self.name,targetProjLabel,geoTransform))
-            logger.debug(
-                "Projecting %s to %s using transform %s" % (self.name, targetSpatialReference.name, geoTransform))
-            self._prjCache[projKey] = arcpy.Project_management(self.featureClass, projFCPath, targetSpatialReference,
-                                                               geoTransform).getOutput(0)
-        return self._prjCache[projKey]
-
-    def getQuantityAttribute(self):
-        if self.getGeometryType() == "Polyline":
-            return "length"
-        elif self.getGeometryType() == "Polygon":
-            return "area"
-        return None
-
-    def getGeometryConversionFactor(self, targetSpatialReference):
-        """
-        Return area / length multiplication factor to calculate hectares / kilometers for the specified projection
-        """
-
-        if self.getGeometryType() == "Polyline":
-            return ProjectionUtilities.getProjUnitFactors(targetSpatialReference)[0]
-        elif self.getGeometryType() == "Polygon":
-            return ProjectionUtilities.getProjUnitFactors(targetSpatialReference)[1]
-        return 0
-
-    def getTotalAreaOrLength(self, targetSpatialReference=None):
-        """
-        Return total area or length, if geometry type supports it, in the target projection
-        """
-        if not self.getGeometryType() in ["Polygon", "Polyline"]:
-            return None
-        if not targetSpatialReference:
-            targetSpatialReference = self.getSpatialReference()
-        projFC = self.project(targetSpatialReference)
-        quantityAttribute = self.getQuantityAttribute()
-        rows = arcpy.SearchCursor(projFC)
-        total = sum([getattr(row.shape, quantityAttribute) for row in rows]) * self.getGeometryConversionFactor(
-            targetSpatialReference)
-        del rows
-        return total
 
 
 class SummaryResult:
@@ -208,13 +70,13 @@ class SummaryField:
 
         self.hasGeometry = hasGeometry
 
-    def addRecord(self, value, count, quantity=None):  #quantity: area or length
+    def addRecord(self, value, count, quantity=0):  #quantity: area or length
         key = None
         if self.classes:
             key = self.getClass(value)
         else:
             key = value
-        if key:
+        if key is not None:
             if not self.results.has_key(key):
                 self.results[key] = SummaryResult()
             self.results[key].update(count, quantity)
@@ -232,15 +94,16 @@ class SummaryField:
         statisticAttribute = "count"
         if self.hasGeometry:
             statisticAttribute = "quantity"
+        values_present = self.results.keys()
         for statistic in statisticsList:
             statisticName = statistic.upper()
             if statisticName == "SUM":
                 #sum = count * value for each entry in results
-                statistics[statistic] = sum([(self.results[key].count * key) for key in self.results.keys()])
+                statistics[statistic] = sum([(self.results[key].count * key) for key in values_present])
             elif statisticName == "MIN":
-                statistics[statistic] = min(self.results.keys())
+                statistics[statistic] = min(values_present)
             elif statisticName == "MAX":
-                statistics[statistic] = max(self.results.keys())
+                statistics[statistic] = max(values_present)
             elif statisticName == "MEAN":
                 #area/length/count weighted average
                 total = float(sum([getattr(result, statisticAttribute) for result in self.results.values()]))
@@ -253,6 +116,10 @@ class SummaryField:
                     )
                 else:
                     statistics[statistic] = None
+            elif statisticName == "STD":
+                #regular standard deviation, not weighted
+                statistics[statistic] = float(numpy.std(values_present))
+
         return statistics
 
     def getResults(self):
@@ -286,6 +153,7 @@ class SummaryField:
         return fieldResults
 
 
+
 def getGridClasses(grid, field, classBreaks):
     remapClasses = []
     for i in range(0, len(classBreaks)):
@@ -295,7 +163,6 @@ def getGridClasses(grid, field, classBreaks):
 
     arcpy.CalculateStatistics_management(grid)
     reclassGrid = arcpy.sa.Reclassify(grid, field, arcpy.sa.RemapRange(remapClasses), "NODATA")
-    #reclassGrid.save(os.path.join(TEMP_WORKSPACE.getDirectory(),"reclass")) #for testing
     results = dict()
     rows = arcpy.SearchCursor(reclassGrid)
     for row in rows:
@@ -312,8 +179,6 @@ def getNumpyValueQuantities(values, quantities):
     :param quantities: quantities measured for each pixel
     :return: dictionary mapping value to count and quantity
     """
-
-    import numpy
 
     flat_values = values.ravel()
     flat_quantities = quantities.ravel()
@@ -433,11 +298,6 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
 
     logger.debug("Processing %s" % (layer.name))
     arcpy.env.cartographicCoordinateSystem = None
-    # try:
-    #     arcpy.env.scratchWorkspace=TEMP_WORKSPACE.getDirectory() # this completely crashes the server container, somehow scratchWorkspace is getting corrupted and cannot be set
-    #     logger.debug("Set scratch workspace")
-    # except:
-    #     logger.debug("Could not set scratch workspace")
 
     results = {
         "intersectionGeometryType": "pixel",
@@ -452,8 +312,8 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
         extentInRasterProjection = srcFC.getExtent(lyrInfo.spatialReference, True)
 
         #have to do the comparison ourselves; the builtin geometric comparisons don't work properly (e.g., extent.overlaps)
-        if extentInRasterProjection.XMin > rasterExtent.XMax or extentInRasterProjection.XMax < rasterExtent.XMin or \
-                        extentInRasterProjection.YMin > rasterExtent.YMax or extentInRasterProjection.YMax < rasterExtent.YMin:
+        if (extentInRasterProjection.XMin > rasterExtent.XMax or extentInRasterProjection.XMax < rasterExtent.XMin or
+                        extentInRasterProjection.YMin > rasterExtent.YMax or extentInRasterProjection.YMax < rasterExtent.YMin):
             logger.debug("Source features do not overlap target raster")
             return results
 
@@ -463,21 +323,38 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
 
 
         #extract using extent
-        clippedGrid = os.path.join(TEMP_WORKSPACE.getDirectory(), "data.img")
+        clippedGrid = os.path.join(arcpy.env.scratchWorkspace, "data.img")
         arcpy.Clip_management(layer.dataSource,
                               "%f %f %f %f" % (extentInRasterProjection.XMin, extentInRasterProjection.YMin,
                                                extentInRasterProjection.XMax, extentInRasterProjection.YMax),
                               clippedGrid, "#", "#", "NONE")
-        logger.debug("Projecting raster to target projection")
-        projectedGrid = os.path.join(TEMP_WORKSPACE.getDirectory(), "projData.img")
-        geoTransform = ProjectionUtilities.getGeoTransform(lyrInfo.spatialReference, spatialReference)
-        arcpy.ProjectRaster_management(clippedGrid, projectedGrid, spatialReference.exportToString(),
-                                       geographic_transform=geoTransform)
 
-        arcpy.env.snapRaster = projectedGrid
-        projectedGrid = arcpy.Raster(projectedGrid)
-        pixelArea = projectedGrid.meanCellHeight * projectedGrid.meanCellWidth * \
-                    ProjectionUtilities.getProjUnitFactors(spatialReference)[1]
+        messages.incrementMinorStep()
+
+        logger.debug("Raster projection is: %s\n(%s)" % (lyrInfo.spatialReference.projectionName, lyrInfo.spatialReference.exporttostring()))
+
+        projectedGrid = None
+        if lyrInfo.spatialReference.projectionName in ("Albers", "Transverse_Mercator", "Lambert_Azimuthal_Equal_Area"):
+            logger.debug("Raster is in Albers, using that instead of custom projection")
+            results['projection'] = "native"
+            spatialReference = lyrInfo.spatialReference
+            arcpy.env.snapRaster = clippedGrid
+            projectedGrid = arcpy.Raster(clippedGrid)
+
+        else:
+            #only project if necessary
+            logger.debug("Projecting raster to target projection")
+            results['projection'] = "custom"
+            projectedGrid = os.path.join(arcpy.env.scratchWorkspace, "projData.img")
+            geoTransform = ProjectionUtilities.getGeoTransform(lyrInfo.spatialReference, spatialReference)
+            arcpy.ProjectRaster_management(clippedGrid, projectedGrid, spatialReference.exportToString(),
+                                           geographic_transform=geoTransform)
+            arcpy.env.snapRaster = projectedGrid
+            projectedGrid = arcpy.Raster(projectedGrid)
+
+        messages.incrementMinorStep()
+
+        pixelArea = (projectedGrid.meanCellHeight * projectedGrid.meanCellWidth * ProjectionUtilities.getProjUnitFactors(spatialReference)[1])
         results['pixelArea'] = pixelArea
 
         #get projected features
@@ -486,29 +363,32 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
         numPixels = projectedGrid.height * projectedGrid.width
         logger.debug("%i pixels within extent of source features" % (numPixels))
 
-        if numPixels <= 50000 and srcFC.getGeometryType() in ["Polygon",
-                                                              "Polyline"]:  #arbitrary limit above which too big to use more exact fishnet-based area weighted methods
+        #arbitrary limit above which too big to use more exact fishnet-based area weighted methods
+        if numPixels <= 50000 and srcFC.getGeometryType() in ["Polygon", "Polyline"]:
             import numpy
 
             results['method'] = "precise"
             logger.debug("Small input grid, using precise method")
 
             logger.debug("Creating fishnet")
-            fishnet = os.path.join(TEMP_WORKSPACE.getGDB(), "fishnet")
+            fishnet = os.path.join(get_scratch_GDB(), "fishnet")
             arcpy.CreateFishnet_management(fishnet, "%f %f" % (projectedGrid.extent.XMin, projectedGrid.extent.YMin),
                                            "%f %f" % (projectedGrid.extent.XMin, projectedGrid.extent.YMax),
                                            projectedGrid.meanCellWidth, projectedGrid.meanCellHeight,
                                            projectedGrid.height,
                                            projectedGrid.width, "#", False, projectedGrid, "POLYGON")
 
+            messages.incrementMinorStep()
+
             logger.debug("Intersecting with area of interest")
-            intersection = os.path.join(TEMP_WORKSPACE.getGDB(), "intersection")
+            intersection = os.path.join(get_scratch_GDB(), "intersection")
             arcpy.Intersect_analysis("%s #;%s #" % (projFC, fishnet), intersection, "ONLY_FID", "#", "INPUT")
 
+            messages.incrementMinorStep()
+
             logger.debug("Tabulating quantities")
-            fix_nodata = False
             try:
-                # This fails on ArcGIS 10.0 server for integer grids.  TODO: remove when no longer applicable
+                # This fails on ArcGIS server for integer grids, under certain circumstances.
                 values = arcpy.RasterToNumPyArray(projectedGrid, nodata_to_value=numpy.nan)
             except ValueError:
                 logger.debug("Could not apply nodata directly to numpy array as numpy.nan, masking later")
@@ -539,13 +419,17 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
             #mask out the original NoData values and areas outside AOI
             if fix_nodata:
                 d = arcpy.Describe(projectedGrid)
-                logger.debug("Masking out nodata value: %s" % d.nodataValue)
-                values = numpy.ma.masked_array(values, mask=numpy.logical_or(values == d.nodataValue, quantities == 0))
+                if hasattr(d, 'nodataValue'):
+                    # Sometimes missing, just to make this even more difficult
+                    logger.debug("Masking out nodata value: %s" % d.nodataValue)
+                    values = numpy.ma.masked_array(values, mask=numpy.logical_or(values == d.nodataValue, quantities == 0))
+                else:
+                    values = numpy.ma.masked_array(values, mask=quantities == 0)
             else:
                 values = numpy.ma.masked_array(values, mask=numpy.logical_or(numpy.isnan(values), quantities == 0))
-            results["intersectionCount"] = (values.mask == False).sum()
+            results["intersectionCount"] = int((values.mask == False).sum())
             results["intersectionQuantity"] = totalQuantity
-            results["sourcePixelCount"] = (quantities != 0).sum()
+            results["sourcePixelCount"] = int((quantities != 0).sum())
             #Note: this will not be accurate if AOI falls outside extent of raster
 
             src_total_quantity = srcFC.getTotalAreaOrLength(spatialReference)
@@ -565,29 +449,16 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
                 if "SUM" in layerConfig["statistics"]:
                     results["statistics"]["SUM"] = round(values.sum(), 2)
 
-                #weighted statistics are harder and only really applicable to polygons
-                if srcFC.getGeometryType() == "Polyline":
-                    if "MEAN" in layerConfig["statistics"]:
+                #weighted statistics are harder
+                if "MEAN" in layerConfig["statistics"]:
+                    if srcFC.getGeometryType() == "Polyline":
                         weighted_values = values * quantities / src_total_quantity  #weighted by proportion of srcFC
-                        results["statistics"]["WEIGHTED_MEAN"] = round(weighted_values.sum(), 2)
-                else:
-                    pixel_proportion = quantities / pixelArea
-                    #calculate weighted by proportion of each pixel occupied, assuming equal distribution within pixels
-                    weighted_values = values * pixel_proportion
-                    # Not applicable?
-                    # if "MIN" in layerConfig["statistics"]:
-                    #     results["statistics"]["WEIGHTED_MIN"]=round(weighted_values.min(),2)
-                    # if "MAX" in layerConfig["statistics"]:
-                    #     results["statistics"]["WEIGHTED_MAX"]=round(weighted_values.max(),2)
-                    if "MEAN" in layerConfig["statistics"]:
-                        logger.debug("Weighted mean: %.4f %.4f" % (
-                        weighted_values.sum() / pixel_proportion.sum(), weighted_values.mean()))
-                        results["statistics"]["WEIGHTED_MEAN"] = round(weighted_values.sum() / pixel_proportion.sum(),
-                                                                       2)
-                    if "STD" in layerConfig["statistics"]:
-                        results["statistics"]["WEIGHTED_STD"] = round(weighted_values.std(), 2)
-                    if "SUM" in layerConfig["statistics"]:
-                        results["statistics"]["WEIGHTED_SUM"] = round(weighted_values.sum(), 2)
+                        results["statistics"]["MEAN"] = round(weighted_values.sum(), 2)
+                    elif srcFC.getGeometryType() == "Polygon":
+                        #calculate weighted by proportion of each pixel occupied, assuming equal distribution within pixels
+                        pixel_proportion = quantities / pixelArea
+                        weighted_values = values * pixel_proportion
+                        results["statistics"]["MEAN"] = round(weighted_values.sum() / pixel_proportion.sum(), 2)
             else:
                 if not projectedGrid.isInteger:
                     #only option is classes of original values
@@ -649,11 +520,13 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
             logger.debug("Large input grid or point input, using approximate method")
 
             logger.debug("Creating area of interest raster")
-            aoiGrid = os.path.join(TEMP_WORKSPACE.getDirectory(), "aoiGrid.img")
+            aoiGrid = os.path.join(arcpy.env.scratchWorkspace, "aoiGrid.img")
             #arcpy.Describe(projFC).OIDFieldName  #we control this, not needed
             arcpy.FeatureToRaster_conversion(projFC, "OBJECTID", aoiGrid, projectedGrid.meanCellHeight)
             arcpy.BuildRasterAttributeTable_management(aoiGrid)
             results["sourcePixelCount"] = getGridCount(aoiGrid, None)[0]
+
+            messages.incrementMinorStep()
 
             if layerConfig.has_key("statistics"):
                 results["statistics"] = dict()
@@ -665,7 +538,7 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
                     arcgisStatistic = statistic.upper()
                     statistics[statistic] = (arcgisStatistic + "IMUM" if arcgisStatistic in ("MIN", "MAX")
                                              else arcgisStatistic)
-                zonalStatsTable = "%s/zonalStatsTable" % (TEMP_WORKSPACE.getGDB())
+                zonalStatsTable = "%s/zonalStatsTable" % (get_scratch_GDB())
                 if arcpy.Exists(zonalStatsTable):
                     arcpy.Delete_management(zonalStatsTable)
                 arcpy.BuildRasterAttributeTable_management(zoneGrid)
@@ -674,6 +547,8 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
                                                                   arcpy.Raster(layer.dataSource), zonalStatsTable,
                                                                   "DATA", "ALL")
                 del zoneGrid
+
+                messages.incrementMinorStep()
 
                 totalCount = 0
                 rows = arcpy.SearchCursor(zonalStatsTable)
@@ -685,7 +560,7 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
                         break  #should only have one row
                     del row
                 del rows, zonalStatsTable
-                arcpy.Delete_management("%s/zonalStatsTable" % (TEMP_WORKSPACE.getGDB()))
+                arcpy.Delete_management("%s/zonalStatsTable" % (get_scratch_GDB()))
                 results["intersectionCount"] = totalCount
 
             else:
@@ -693,12 +568,14 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
                 logger.debug("Extracting area of interest from %s" % (layer.name))
                 clipGrid = arcpy.sa.ExtractByMask(projectedGrid, aoiGrid)
 
+                messages.incrementMinorStep()
+
                 if not clipGrid.isInteger:
                     #force to single bit data, since we can't build attribute tables of floating point data.
                     testGrid = arcpy.sa.IsNull(clipGrid)
                     arcpy.BuildRasterAttributeTable_management(testGrid)
                     results["intersectionCount"] = getGridCount(testGrid, getGridValueField(testGrid))[1][0]
-                    #testGrid.save(os.path.join(TEMP_WORKSPACE.getDirectory(),"isnull")) #for testing
+                    #testGrid.save(os.path.join(arcpy.env.scratchWorkspace,"isnull")) #for testing
                     del testGrid
 
                     if layerConfig.has_key("classes"):
@@ -761,9 +638,12 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
 
             results["intersectionQuantity"] = float(results["intersectionCount"]) * pixelArea
 
+        #TODO: delete projected grid
         try:
             arcpy.Delete_management(clippedGrid)
-                #this is causing issues on server, maybe getting deleted too soon? TODO: create a delete tool that runs in a try-catch block
+            #this is causing issues on server, maybe getting deleted too soon? TODO: create a delete tool that runs in a try-catch block
+            if projectedGrid is not None:
+                arcpy.Delete_management(projectedGrid)
         except:
             pass
     finally:
@@ -789,12 +669,16 @@ def tabulateFeatureLayer(srcFC, layer, layerConfig, spatialReference, messages):
     featureCount = int(arcpy.GetCount_management(selLyr).getOutput(0))
     logger.debug("Found %s intersecting features" % (featureCount))
 
+    messages.incrementMinorStep()
+
     if featureCount > 0:
         arcpy.env.cartographicCoordinateSystem = spatialReference
         selFC = "IN_MEMORY/selFC"
         #Selected features must be copied into new feature class for projection step, otherwise it uses the entire dataset (lame!)
         logger.debug("Copying selected features to in-memory feature class")
         arcpy.CopyFeatures_management(selLyr, selFC)
+
+        messages.incrementMinorStep()
 
         #project the selection to target projection, and then intersect with source (in target projection)
         geoTransform = ProjectionUtilities.getGeoTransform(lyrInfo.spatialReference, spatialReference)
@@ -804,6 +688,8 @@ def tabulateFeatureLayer(srcFC, layer, layerConfig, spatialReference, messages):
         logger.debug("Intersecting selected features with area of interest")
         intFC = FeatureClassWrapper(arcpy.Intersect_analysis([srcFC.project(spatialReference), projFC.featureClass],
                                                              "IN_MEMORY/" + "intFC").getOutput(0))
+
+        messages.incrementMinorStep()
 
         featureCount = int(arcpy.GetCount_management(intFC.featureClass).getOutput(0))
         if featureCount > 0:
@@ -832,9 +718,9 @@ def tabulateFeatureLayer(srcFC, layer, layerConfig, spatialReference, messages):
             total = 0
             count = 0
             for row in rows:
-                geometryCount = 1  #row.shape.partCount #Note: this counts all geometries independently, is NOT number of features
+                geometryCount = 1  #Note: NOT number of features within this record in case of multi-part features
                 count += geometryCount
-                quantity = None
+                quantity = 0
                 if intersectionQuantityAttribute:
                     quantity = getattr(row.shape, intersectionQuantityAttribute) * intersectionConversionFactor
                     total += quantity
@@ -842,6 +728,8 @@ def tabulateFeatureLayer(srcFC, layer, layerConfig, spatialReference, messages):
                     intersectionSummaryFields[summaryField].addRecord(row.getValue(summaryField), geometryCount,
                                                                       quantity)
             del row, rows
+
+            messages.incrementMinorStep()
 
             results["intersectionGeometryType"] = intFC.getGeometryType().lower().replace("polyline", "line")
             results["intersectionCount"] = count
@@ -856,7 +744,7 @@ def tabulateFeatureLayer(srcFC, layer, layerConfig, spatialReference, messages):
             for row in rows:
                 geometryCount = 1  #row.shape.partCount
                 count += geometryCount
-                quantity = None
+                quantity = 0
                 if intersectedQuantityAttribute:
                     quantity = getattr(row.shape, intersectedQuantityAttribute) * intersectedConversionFactor
                     total += quantity
@@ -864,6 +752,8 @@ def tabulateFeatureLayer(srcFC, layer, layerConfig, spatialReference, messages):
                     intersectedSummaryFields[summaryField].addRecord(row.getValue(summaryField), geometryCount,
                                                                      quantity)
             del row, rows
+
+            messages.incrementMinorStep()
 
             results["intersectedGeometryType"] = projFC.getGeometryType().lower().replace("polyline", "line")
             results["intersectedCount"] = count
@@ -930,11 +820,12 @@ def tabulateMapService(srcFC, serviceID, mapServiceConfig, spatialReference, mes
     mapDocPath: path to the map document behind the map service
     mapServiceConfig: subset of config for a single map service
     spatialReference: spatial reference object with target projection
+    messages: instance of MessageHandler
     '''
 
     results = []
     layerPaths = getDataPathsForService(serviceID)
-    messages.setMinorSteps(len(mapServiceConfig['layers']))
+    messages.setMinorSteps(len(mapServiceConfig['layers']) * 5)
     for layerConfig in mapServiceConfig['layers']:
         lyrResults = dict()
         layerID = int(layerConfig["layerID"])
@@ -974,9 +865,14 @@ def tabulateMapServices(srcFC, config, messages):
     '''
 
     start = time.time()
-    logger.debug("Temporary Workspace: %s" % (TEMP_WORKSPACE.getDirectory()))
-    arcpy.env.workspace = TEMP_WORKSPACE.getGDB()  #workspace must be pointing at GDB to prevent server object crashes when run as 10.0 geoprocessing service!
-    arcpy.env.scratchWorkspace = TEMP_WORKSPACE.getGDB()
+
+    #wrap GP tool messages with logging
+    messages = MessageHandler(logger=logger, messages=messages)
+    messages.setMajorSteps(len(config["services"]) * 2 + 1)
+
+    logger.debug("Scratch Workspace: %s" % (arcpy.env.scratchWorkspace))
+    #workspace must be pointing at GDB to prevent server object crashes when run as 10.0 geoprocessing service!
+    arcpy.env.workspace = get_scratch_GDB()
 
     results = dict()
     if not config.has_key("services"):
@@ -987,6 +883,7 @@ def tabulateMapServices(srcFC, config, messages):
     geoExtent = srcFC.getExtent(ProjectionUtilities.getSpatialReferenceFromWKID(4326))
     spatialReference = ProjectionUtilities.createCustomAlbers(geoExtent)
 
+    messages.incrementMajorStep()
     if not srcFC.getCount():
         raise Exception("INVALID INPUT: no features in input")
 
@@ -998,8 +895,10 @@ def tabulateMapServices(srcFC, config, messages):
         results["sourceFeatureQuantity"] = srcFC.getTotalAreaOrLength(spatialReference)
     results["services"] = []
 
-    messages.setMajorSteps(len(config["services"]))
+    messages.incrementMajorStep()
+
     for mapServiceConfig in config["services"]:
+        messages.incrementMajorStep()
         serviceID = mapServiceConfig["serviceID"]
         try:
             logger.debug("Processing map service: %s" % (serviceID))
@@ -1011,7 +910,6 @@ def tabulateMapServices(srcFC, config, messages):
             results["services"].append({"serviceID": serviceID, "error": error})
         messages.incrementMajorStep()
 
-    TEMP_WORKSPACE.delete()
     logger.debug("Elapsed time: %.2f" % (time.time() - start))
     return results
 
