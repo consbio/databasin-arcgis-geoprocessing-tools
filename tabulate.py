@@ -14,21 +14,20 @@ TODOC:
 
 """
 
-import os, sys, time, traceback, copy, logging
+import os
+import time
+import traceback
+import copy
+import logging
+
 import numpy
-
-if __name__ == "__main__":
-    #Make sure we're using the ArcGIS server (as opposed to the Desktop) arcpy package.
-    for path in filter(lambda x: os.path.normpath(x.lower()).replace("\\", "/").count("arcgis/server"), sys.path):
-        sys.path.insert(0, path)
-
 import arcpy
 
 from utilities import ProjectionUtilities
 from utilities.feature_class_wrapper import FeatureClassWrapper
 from utilities.PathUtils import getDataPathsForService, get_scratch_GDB
 from messaging import MessageHandler
-
+from tool_exceptions import GPToolError
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +52,9 @@ class SummaryResult:
 
 
 class SummaryField:
-    '''
+    """
     convenience class wrapper of an attribute used for summarization of attribute values by unique, classes, or statistics
-    '''
+    """
 
     def __init__(self, fieldJSON, hasGeometry=False):
         self.attribute = fieldJSON["attribute"]
@@ -239,11 +238,11 @@ def getNumpyClassQuantities(values, quantities, classBreaks):
 
 
 def FishnetOIDToNumpy(OID, rows, cols):
-    '''
+    """
     Return the row and column in grid coordinates that correspond to the given OID
     Fishnet numbers start at 1, in bottom left corner, and go columnwise from there.
     Grid coordinates start at 0, and start in upper left
-    '''
+    """
     row, col = divmod(OID - 1, cols)
     row = (rows - 1) - row  #invert row order
     return row, col
@@ -251,9 +250,9 @@ def FishnetOIDToNumpy(OID, rows, cols):
 
 #TODO: use python Counter class when supported
 def getGridCount(grid, summaryField):
-    '''
+    """
     Return total count of pixels, and count by summary field if passed in
-    '''
+    """
 
     totalCount = 0
     summary = dict()
@@ -275,12 +274,12 @@ def getGridCount(grid, summaryField):
 
 
 def getGridValueField(grid):
-    '''
+    """
     Return value field name for grid, because case changes based on format
 
     :param grid: input grid
     :return: name of value field in grid
-    '''
+    """
 
     for field in arcpy.ListFields(grid):
         if field.name.lower() == "value":
@@ -289,12 +288,12 @@ def getGridValueField(grid):
 
 
 def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
-    '''
+    """
     srcFC: source feature class wrapper
     layer: layer object
     layerConfig: subset of config for a single layer
     spatialReference: spatial reference object with target projection
-    '''
+    """
 
     logger.debug("Processing %s" % (layer.name))
     arcpy.env.cartographicCoordinateSystem = None
@@ -334,8 +333,8 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
         logger.debug("Raster projection is: %s\n(%s)" % (lyrInfo.spatialReference.projectionName, lyrInfo.spatialReference.exporttostring()))
 
         projectedGrid = None
-        if lyrInfo.spatialReference.projectionName in ("Albers", "Transverse_Mercator", "Lambert_Azimuthal_Equal_Area"):
-            logger.debug("Raster is in Albers, using that instead of custom projection")
+        if ProjectionUtilities.isValidAreaProjection(lyrInfo.spatialReference):
+            logger.debug("Raster is in valid projection for calculating areas, using that instead of custom projection")
             results['projection'] = "native"
             spatialReference = lyrInfo.spatialReference
             arcpy.env.snapRaster = clippedGrid
@@ -387,6 +386,7 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
             messages.incrementMinorStep()
 
             logger.debug("Tabulating quantities")
+            fix_nodata = False
             try:
                 # This fails on ArcGIS server for integer grids, under certain circumstances.
                 values = arcpy.RasterToNumPyArray(projectedGrid, nodata_to_value=numpy.nan)
@@ -638,7 +638,6 @@ def tabulateRasterLayer(srcFC, layer, layerConfig, spatialReference, messages):
 
             results["intersectionQuantity"] = float(results["intersectionCount"]) * pixelArea
 
-        #TODO: delete projected grid
         try:
             arcpy.Delete_management(clippedGrid)
             #this is causing issues on server, maybe getting deleted too soon? TODO: create a delete tool that runs in a try-catch block
@@ -815,13 +814,13 @@ def tabulateFeatureLayer(srcFC, layer, layerConfig, spatialReference, messages):
 
 
 def tabulateMapService(srcFC, serviceID, mapServiceConfig, spatialReference, messages):
-    '''
+    """
     srcFC: source feature class wrapper
     mapDocPath: path to the map document behind the map service
     mapServiceConfig: subset of config for a single map service
     spatialReference: spatial reference object with target projection
     messages: instance of MessageHandler
-    '''
+    """
 
     results = []
     layerPaths = getDataPathsForService(serviceID)
@@ -847,6 +846,9 @@ def tabulateMapService(srcFC, serviceID, mapServiceConfig, spatialReference, mes
                 logger.error("Layer type is unsupported %s: %s" % (layerID, layer.name))
                 result["error"] = "unsupported layer type"
             results.append(result)
+        except GPToolError as ex:
+            logger.error("Error processing layer %s: %s\n%s" % (layerID, layer.name, ex.message))
+            results.append({"layerID": layerID, "error": ex.message})
         except:
             error = traceback.format_exc()
             logger.error("Error processing layer %s: %s\n%s" % (layerID, layer.name, error))
@@ -858,17 +860,27 @@ def tabulateMapService(srcFC, serviceID, mapServiceConfig, spatialReference, mes
 
 
 def tabulateMapServices(srcFC, config, messages):
-    '''
+    """
     srcFC: instance of FeatureClass wrapper with the area of interest features
     config: TODO: operate on original list of map services
     projectionWKID: ESRI WKID representing the target projection to use for all calculations (e.g., 102003, which is USA_Contiguous_Albers_Equal_Area_Conic)
-    '''
+    """
 
+    
+    #Validate Inputs
+    if not srcFC.getCount():
+        raise GPToolError("INVALID INPUT: no features in input")
+
+    if not len(config["services"]):
+        raise GPToolError("INVALID INPUT: no map services specified")
+
+    logger.debug("Starting tabulateMapServices")
     start = time.time()
 
     #wrap GP tool messages with logging
     messages = MessageHandler(logger=logger, messages=messages)
-    messages.setMajorSteps(len(config["services"]) * 2 + 1)
+    messages.setMajorSteps(len(config["services"]) + 1)
+    messages.setMinorSteps(2)
 
     logger.debug("Scratch Workspace: %s" % (arcpy.env.scratchWorkspace))
     #workspace must be pointing at GDB to prevent server object crashes when run as 10.0 geoprocessing service!
@@ -882,10 +894,7 @@ def tabulateMapServices(srcFC, config, messages):
     logger.debug("Setting up custom Albers projection")
     geoExtent = srcFC.getExtent(ProjectionUtilities.getSpatialReferenceFromWKID(4326))
     spatialReference = ProjectionUtilities.createCustomAlbers(geoExtent)
-
-    messages.incrementMajorStep()
-    if not srcFC.getCount():
-        raise Exception("INVALID INPUT: no features in input")
+    messages.incrementMinorStep()
 
     results["area_units"] = "hectares"  #always
     results["linear_units"] = "kilometers"  #always
@@ -894,11 +903,9 @@ def tabulateMapServices(srcFC, config, messages):
     if results["sourceGeometryType"] != "point":
         results["sourceFeatureQuantity"] = srcFC.getTotalAreaOrLength(spatialReference)
     results["services"] = []
-
     messages.incrementMajorStep()
 
     for mapServiceConfig in config["services"]:
-        messages.incrementMajorStep()
         serviceID = mapServiceConfig["serviceID"]
         try:
             logger.debug("Processing map service: %s" % (serviceID))

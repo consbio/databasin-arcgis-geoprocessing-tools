@@ -8,8 +8,8 @@ This tool tabulates various summary values for feature or raster datasets within
 interest can be represented as one or more points, lines, or polygons (limited to one type of geometry per analysis).
 
 This tool creates a custom Albers Equal Area (WGS84 datum) projection centered over the area of interest to use as the
-standard throughout processing; however, the native projection of the target dataset will be used if it is an equal-area
-projection, such as Albers Equal-Area, Lambert Azimuthal Equal-Area, or UTM.
+standard throughout processing; however, the native projection of the target raster dataset will be used if it is
+a valid projection for calculating areas, such as Albers Equal-Area, Lambert Azimuthal Equal-Area, or UTM.
 
 For raster analysis, the tool uses one of two methods:
 
@@ -352,22 +352,22 @@ During execution, the tool will add a progress message for each completed layer 
 Error Handling
 ==============
 This tool will almost always return successfully, because it is trapping and returning errors if encountered for each service and layer.
-These will be include the python stacktrace of the error to assist debugging.  Additional information may be present in the
-logs to indicate the problem.
+These will be include the python stacktrace of the error to assist debugging, unless the error is an input or data error
+that the tool is specifically trying to handle.  Additional information may be present in the logs to indicate the problem.
 
 Example error:
 
 {
-    "sourceFeatureQuantity": 13361.473722256975,
-    "sourceGeometryType": "polygon",
-    "sourceFeatureCount": 1,
-    "services": [
-        {
-            "error": "Traceback (most recent call last): File \"C:\\databasin_app\\databasin_arcgis_geoprocessing_tools\\tabulate.py\", line 897, in tabulateMapServices results[\"services\"].append(tabulateMapService(srcFC,serviceID,mapServiceConfig,spatialReference,messages)) File \"C:\\databasin_app\\databasin_arcgis_geoprocessing_tools\\tabulate.py\", line 827, in tabulateMapService layerPaths = getDataPathsForService(serviceID) File \"C:\\databasin_app\\databasin_arcgis_geoprocessing_tools\\utilities\\PathUtils.py\", line 169, in getDataPathsForService raise ReferenceError(\"Map service config file not found: %s, make sure the service is published and serviceID is valid \"%(configFilename)) ReferenceError: Map service config file not found: C:\\ProgramFiles(x86)\\ArcGIS\\Server10.0\\server\\user\\cfg\\A919f6316315548c4b047112b982cb00a.MapServer.cfg, make sure the service is published and serviceID is valid"
-        }
-    ], "linear_units": "kilometers",
-    "area_units": "hectares"
+    'sourceFeatureQuantity': 11231.925988334813,
+    'sourceGeometryType': 'polygon',
+    'sourceFeatureCount': 1,
+    'services': [
+        {'layers': [{
+            'error': 'GCS_NOT_SUPPORTED: Geographic Transformation to WGS84 not found for projection with GCS: GCS_North_American_1927',
+            'layerID': 9
+        }],
+        'serviceID': u'arcgis_geoprocessing_tools_test_data'}
+    ],
+    'linear_units': 'kilometers',
+    'area_units': 'hectares'
 }
-
-
-

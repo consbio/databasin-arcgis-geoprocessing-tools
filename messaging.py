@@ -1,4 +1,4 @@
-import arcpy
+
 
 class MessageHandler:
     """
@@ -39,7 +39,7 @@ class MessageHandler:
 
         self.minor_steps=minor_steps
         self.minor_step=0
-        self._updateMinorProgress()
+        self._updateMajorProgress()
 
     def incrementMajorStep(self):
         """Increment the current major step by one, and emit a new progress message."""
@@ -53,18 +53,17 @@ class MessageHandler:
         self.minor_step+=1
         self._updateMinorProgress()
 
+    def _getMajorProgress(self):
+        return 100.0 * float(self.major_step) / float(self.major_steps) if self.major_steps else 0
+
     def _updateMajorProgress(self):
-        progress=0
-        if self.major_steps>0:
-            progress = 100.0 * float(self.major_step) / float(self.major_steps)
-        self.setProgress(progress)
+        self.setProgress(self._getMajorProgress())
 
     def _updateMinorProgress(self):
-        progress=0
-        if self.major_steps>0 and self.minor_steps>0:
-            progress = (100.0 * float(self.minor_step) / float(self.minor_steps))  / self.major_steps
-        self.setProgress(progress)
-
+        minor_progress = 0
+        if self.minor_steps:
+            minor_progress = 100.0 * float(self.minor_step) / (float(self.major_steps) * float(self.minor_steps))
+        self.setProgress(self._getMajorProgress() + minor_progress)
 
     def setProgress(self,progress):
         """
