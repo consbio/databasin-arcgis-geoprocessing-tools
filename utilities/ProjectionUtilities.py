@@ -2,9 +2,13 @@
 General utilities for helping deal with projection related information
 """
 
-import re,arcpy,os
-import settings
+import re
+import os
+import arcpy
+from tool_exceptions import GPToolError
 
+# Names of projections that can be used for area calculations
+VALID_AREA_PROJECTION_NAMES = ("Albers", "Transverse_Mercator", "Lambert_Azimuthal_Equal_Area")
 
 
 def getGCS(spatialReference):
@@ -16,7 +20,7 @@ def getGCS(spatialReference):
     wkt=spatialReference.exportToString()
     gcsMatch=re.search("(?<=GEOGCS\[').*?(?=')",wkt)
     if not gcsMatch:
-        raise Exception("GCS_NOT_SUPPORTED: valid GCS not found in WKT: %s"%(wkt))
+        raise GPToolError("GCS_NOT_SUPPORTED: valid GCS not found in WKT: %s"%(wkt))
     return gcsMatch.group()    
 
 
@@ -36,7 +40,7 @@ def getProjUnitFactors(spatialReference):
     }
     unit=spatialReference.linearUnitName
     if not factors.has_key(unit):
-        raise Exception("UNITS_NOT_SUPPORTED: units not implemented for %s"%(unit))
+        raise GPToolError("UNITS_NOT_SUPPORTED: units not implemented for %s"%(unit))
     return factors[unit]
 
 
@@ -75,7 +79,7 @@ def getWGS84GeoTransform(gcs):
     elif gcs_transform_WGS84.has_key(gcs):
         return gcs_transform_WGS84[gcs]
     else:
-        raise Exception("GCS_NOT_SUPPORTED: Geographic Transformation to WGS84 not found for projection with GCS: %s"%(gcs)) 
+        raise GPToolError("GCS_NOT_SUPPORTED: Geographic Transformation to WGS84 not found for projection with GCS: %s"%(gcs))
 
 
 
@@ -111,13 +115,12 @@ def getGeoTransform(srcSR,targetSR):
         return ""
 
 
-def projectExtent(extent,tempGDB,srcSR,targetSR):
+def projectExtent(extent,srcSR,targetSR):
     """
     Project the extent to the target spatial reference, and return the projected extent.  Creates a temporary feature
     class based on bounding box of source.
 
     :param extent: source extent
-    :param tempGDB: temporary geodatabase to contain the projected feature class
     :param srcSR: source ArcGIS spatial reference object
     :param targetSR: target ArcGIS spatial reference object
     """
@@ -128,39 +131,11 @@ def projectExtent(extent,tempGDB,srcSR,targetSR):
     array.add(arcpy.Point(extent.XMax,extent.YMin))
     array.add(arcpy.Point(extent.XMax,extent.YMax))
     fc=arcpy.Multipoint(array,srcSR)
-    projFC=arcpy.Project_management(fc,os.path.join(tempGDB,"tempProj"),targetSR,getGeoTransform(srcSR,targetSR),srcSR).getOutput(0)
+    projFC=arcpy.Project_management(fc, os.path.join(arcpy.env.scratchWorkspace, "scratch.gdb","tempProj"),
+                                    targetSR,getGeoTransform(srcSR,targetSR),srcSR).getOutput(0)
     extent = arcpy.mapping.Layer(projFC).getExtent()
     arcpy.Delete_management(projFC)
     return extent
-
-
-def getCellArea(grid,targetSR):
-    """
-    Returns the area (in hectares) of a grid cell.  If the grid is in a projection, use that projection to derive the
-    area, assuming that it is the most accurate projection for the data.  If the grid is not projected (is geographic),
-    this creates an extent polygon from the extent of the raster, projects that to the target projection, and divides it
-    by the number of rows and columns in the grid to calculate the area.
-
-    :param grid: grid to calculate cell area
-    :param targetSR: target ArcGIS spatial reference object (only used if grid is not projected)
-    """
-    info=arcpy.Describe(grid)
-    if info.spatialReference.type!="Projected":
-        #project bounding box to targetProj
-        print "Projecting bounding box to target projection"
-        projExtent=projectExtent(info.extent,settings.TEMP_GDB,info.spatialReference,targetSR)
-        xSize=(projExtent.XMax-projExtent.XMin)/float(info.width)
-        ySize=(projExtent.YMax-projExtent.YMin)/float(info.height)
-        areaFactor=getProjUnitFactors(targetSR)[1]
-        cellArea=round(xSize*ySize*areaFactor,4)
-        projType="target"
-        print xSize,ySize,areaFactor,cellArea
-    else:
-        #use the native projection; assume it is the most correct for the dataset
-        areaFactor=getProjUnitFactors(info.spatialReference)[1]
-        cellArea=round(info.meanCellHeight*info.meanCellWidth * areaFactor,4)
-        projType="native"
-    return cellArea,projType
 
 
 def createCustomAlbers(extent):
@@ -194,3 +169,14 @@ def getSpatialReferenceFromWKID(WKID):
     spatialReference.factoryCode=4326
     spatialReference.create()
     return spatialReference
+
+
+def isValidAreaProjection(spatialReference):
+    """
+    Determines if projection is valid for area calculations.
+
+    :param spatialReference: spatial reference object
+    :return: True if valid for area projections, False otherwise
+    """
+
+    return spatialReference.projectionName in VALID_AREA_PROJECTION_NAMES

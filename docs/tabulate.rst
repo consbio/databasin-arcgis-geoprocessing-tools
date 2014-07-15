@@ -8,7 +8,8 @@ This tool tabulates various summary values for feature or raster datasets within
 interest can be represented as one or more points, lines, or polygons (limited to one type of geometry per analysis).
 
 This tool creates a custom Albers Equal Area (WGS84 datum) projection centered over the area of interest to use as the
-standard throughout processing.  This helps ensure that areas are comparable between source features, target features, and target rasters.
+standard throughout processing; however, the native projection of the target raster dataset will be used if it is
+a valid projection for calculating areas, such as Albers Equal-Area, Lambert Azimuthal Equal-Area, or UTM.
 
 For raster analysis, the tool uses one of two methods:
 
@@ -19,10 +20,7 @@ the number of pixels in the extent of the area of interest is higher than optima
 
 2) precise: the raster is extracted to the extent of the area of interest in its native projection, and then a fishnet
 feature class is created that matches it.  This fishnet is then intersected with the area of interest, and proportional
-areas of overlap area calculated as weights for each pixel.  These weights can then used for either area weighted statistics,
-with the assumption that values within the pixels are equally distributed and can be subdivided (new value = proportion of
-overlap * original value).  This assumption may not be appropriate in all cases, so exercise caution when interpreting
-the weighted results.
+areas of overlap area calculated as weights for each pixel.  These weights can then used for either area weighted statistics.
 
 
 
@@ -37,6 +35,10 @@ Available Summary Methods
 * area or length and count of features by classes of a continuous attribute
 * statistics of a continuous attribute inside area of interest: MIN, MAX, SUM, MEAN
 
+    Note: MEAN is always weighted by the polygon area, line length, or point count of the target features within the
+    area of interest.
+
+
 *Raster layers*
 
 * area and pixel count of area of interest in resolution of target raster
@@ -45,16 +47,8 @@ Available Summary Methods
 * area and pixel count of classes of a continuous raster or raster attribute inside area of interest
 * statistics of raster or continuous attribute inside area of interest. Valid statistics are: MIN, MAX, SUM, MEAN, STD (standard deviation).
 
-    Can include these statistics if precise method is used and area of interest is a polygon:
-
-    * WEIGHTED_MIN: min of original pixel values * proportion overlap per pixel
-    * WEIGHTED_MAX: max of original pixel values * proportion overlap per pixel
-    * WEIGHTED_SUM: sum of original pixel values * proportion overlap per pixel
-    * WEIGHTED_MEAN: mean of original pixel values * proportion overlap per pixel
-    * WEIGHTED_STD: standard deviation of original pixel values * proportion overlap per pixel
-
-    Can include WEIGHTED_MEAN (sum of original pixel values * proportion of area of interest in each pixel) if
-    precise method is used and area of interest is a line.
+    Note: If the precise method is used, MEAN is weighted by the proportion of each pixel occupied by the area of
+    interest if it is a polygon, or by the proportional length if area of interset is a line.
 
 
 Inputs
@@ -143,15 +137,6 @@ Inputs
 
 
 
-**targetProjectionWKID:**
-    The target projection ESRI Well-Known ID (WKID).
-
-    :Example: 102003
-
-    .. note:: only limited projections are supported due to ArcGIS requirement for geographic transformations between
-     the source and target projections (see utilities/ProjectionUtilities.py for supported geographic transformations)
-
-
 
 Outputs
 =======
@@ -164,7 +149,7 @@ During execution, the tool will add a progress message for each completed layer 
     *Key concepts:*
 
     * Very little is returned if no intersection is found.  Generally only count properties will be returned in this case.
-    * Areas and lengths are returned using the general "quantity" properties.
+    * Areas and lengths are returned using the general "intersectionQuantity" properties.
       Use the geometryType properties to determine what units these represent.  Quantities will not be returned for points.
     * An important distinction is made between intersected and intersection results for features:
 
@@ -279,28 +264,28 @@ During execution, the tool will add a progress message for each completed layer 
                             "values": [
                                 {
                                     "value": 1,
-                                    "count": 24090,
-                                    "quantity": 2168.0999999999999
+                                    "intersectionCount": 24090,
+                                    "intersectionQuantity": 2168.0999999999999
                                 },
                                 {
                                     "value": 2,
-                                    "count": 38736,
-                                    "quantity": 3486.2399999999998
+                                    "intersectionCount": 38736,
+                                    "intersectionQuantity": 3486.2399999999998
                                 },
                                 {
                                     "value": 3,
-                                    "count": 44753,
-                                    "quantity": 4027.77
+                                    "intersectionCount": 44753,
+                                    "intersectionQuantity": 4027.77
                                 },
                                 {
                                     "value": 4,
-                                    "count": 17088,
-                                    "quantity": 1537.9199999999998
+                                    "intersectionCount": 17088,
+                                    "intersectionQuantity": 1537.9199999999998
                                 },
                                 {
                                     "value": 5,
-                                    "count": 129,
-                                    "quantity": 11.609999999999999
+                                    "intersectionCount": 129,
+                                    "intersectionQuantity": 11.609999999999999
                                 }
                             ]
                         },
@@ -320,18 +305,18 @@ During execution, the tool will add a progress message for each completed layer 
                             "classes": [
                                 {
                                     "class": [0,300],
-                                    "count": 67863,
-                                    "quantity": 6107.6700000000001
+                                    "intersectionCount": 67863,
+                                    "intersectionQuantity": 6107.6700000000001
                                 },
                                 {
                                     "class": [300,310],
-                                    "count": 38677,
-                                    "quantity": 3480.9299999999998
+                                    "intersectionCount": 38677,
+                                    "intersectionQuantity": 3480.9299999999998
                                 },
                                 {
                                     "class": [310,400],
-                                    "count": 18256,
-                                    "quantity": 1643.04
+                                    "intersectionCount": 18256,
+                                    "intersectionQuantity": 1643.04
                                 }
                             ],
                             "geometryType": "pixel",
@@ -367,8 +352,22 @@ During execution, the tool will add a progress message for each completed layer 
 Error Handling
 ==============
 This tool will almost always return successfully, because it is trapping and returning errors if encountered for each service and layer.
-These will be include the python stacktrace of the error to assist debugging.  Additional information may be present in the
-logs to indicate the problem.
+These will be include the python stacktrace of the error to assist debugging, unless the error is an input or data error
+that the tool is specifically trying to handle.  Additional information may be present in the logs to indicate the problem.
 
+Example error:
 
-
+{
+    'sourceFeatureQuantity': 11231.925988334813,
+    'sourceGeometryType': 'polygon',
+    'sourceFeatureCount': 1,
+    'services': [
+        {'layers': [{
+            'error': 'GCS_NOT_SUPPORTED: Geographic Transformation to WGS84 not found for projection with GCS: GCS_North_American_1927',
+            'layerID': 9
+        }],
+        'serviceID': u'arcgis_geoprocessing_tools_test_data'}
+    ],
+    'linear_units': 'kilometers',
+    'area_units': 'hectares'
+}
