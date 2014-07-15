@@ -2,12 +2,10 @@
 Environment settings
 """
 
-ARCGIS_VERSION="10.0" #Valid options are 10.0, 10.1 (prior versions not supported by tools)
-
 #The directory that contains the configuration files for each map service
-ARCGIS_SVC_CONFIG_DIR=r"C:\Program Files (x86)\ArcGIS\Server10.0\server\user\cfg" #Version 10.0
-#ARCGIS_SVC_CONFIG_DIR=r"C:\arcgisserver\config-store\services" #Version 10.1
+ARCGIS_SVC_CONFIG_DIR="/opt/arcgis/server/usr/config-store"
 
-LOG_FILENAME = "C:/arcgisserver/logs/tool_log.log"
+#Location of the log file.  Server process needs to have file system permissions to write to that directory.
+LOG_FILENAME = "/var/log/databasin/databasin_gp_tools/databasin_gp_tools.log"
 LOG_LEVEL = "DEBUG" #Valid options are DEBUG, INFO, ERROR (or any other level supported by logging package)
 

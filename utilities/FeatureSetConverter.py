@@ -4,7 +4,7 @@ Converts a featureset in JSON into a feature class in memory
 
 
 import arcpy,os,json
-arcpy.env.overwriteOutput =True
+
 
 
 ################# Globals ###########################
