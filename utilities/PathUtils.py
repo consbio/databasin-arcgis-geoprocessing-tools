@@ -6,10 +6,17 @@ General path utilities for workspaces and routing to map documents behind map se
 import arcpy
 import json
 import os
+import re
+import logging
 from xml.etree.ElementTree import fromstring
 from zipfile import ZipFile
 
 import settings
+
+logger = logging.getLogger(__name__)
+
+
+DYNAMIC_DIR_RE = re.compile(r"\${\S+}")
 
 
 def get_scratch_GDB():
@@ -69,12 +76,22 @@ def getDataPathsForService(serviceID):
         serviceID=serviceID[(lastIndex+1):]
 
     #json file contains pointer to MSD file
-    configJSONFilename=os.path.normpath(os.path.join(settings.ARCGIS_SVC_CONFIG_DIR,servicePath,"%s.MapServer/%s.MapServer.json"%(serviceID,serviceID)))
+    configJSONFilename=os.path.normpath(os.path.join(settings.ARCGIS_SVC_CONFIG_DIR, "services", servicePath,"%s.MapServer/%s.MapServer.json"%(serviceID,serviceID)))
     if not os.path.exists(configJSONFilename):
         raise ReferenceError("Map service config file not found: %s, make sure the service is published and serviceID is valid"%(configJSONFilename))
 
     configJSON=json.loads(open(configJSONFilename).read())
-    msdPath=os.path.normpath(configJSON['properties']['filePath'])
+
+    filePath = configJSON['properties']['filePath']
+    if DYNAMIC_DIR_RE.search(filePath):
+        # Real path is injected at runtime.  Ugh!
+        # Attempt to determine from server config
+        dirConfig = json.loads(open(os.path.join(settings.ARCGIS_SVC_CONFIG_DIR, "serverdirs", "arcgisinput.json")).read())
+        dataRootDir = dirConfig['physicalPath']
+        filePath = filePath.replace(DYNAMIC_DIR_RE.search(filePath).group(), dataRootDir)
+
+
+    msdPath=os.path.normpath(filePath)
     msd=ZipFile(msdPath)
     #doc info file contains pointer to layers XML file
     layersXMLPath=fromstring(msd.open("DocumentInfo.xml").read()).findtext("ActiveMapRepositoryPath").replace("CIMPATH=","")

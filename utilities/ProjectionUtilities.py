@@ -5,6 +5,10 @@ General utilities for helping deal with projection related information
 import re
 import os
 import arcpy
+from tool_exceptions import GPToolError
+
+# Names of projections that can be used for area calculations
+VALID_AREA_PROJECTION_NAMES = ("Albers", "Transverse_Mercator", "Lambert_Azimuthal_Equal_Area")
 
 
 def getGCS(spatialReference):
@@ -16,7 +20,7 @@ def getGCS(spatialReference):
     wkt=spatialReference.exportToString()
     gcsMatch=re.search("(?<=GEOGCS\[').*?(?=')",wkt)
     if not gcsMatch:
-        raise Exception("GCS_NOT_SUPPORTED: valid GCS not found in WKT: %s"%(wkt))
+        raise GPToolError("GCS_NOT_SUPPORTED: valid GCS not found in WKT: %s"%(wkt))
     return gcsMatch.group()    
 
 
@@ -36,7 +40,7 @@ def getProjUnitFactors(spatialReference):
     }
     unit=spatialReference.linearUnitName
     if not factors.has_key(unit):
-        raise Exception("UNITS_NOT_SUPPORTED: units not implemented for %s"%(unit))
+        raise GPToolError("UNITS_NOT_SUPPORTED: units not implemented for %s"%(unit))
     return factors[unit]
 
 
@@ -75,7 +79,7 @@ def getWGS84GeoTransform(gcs):
     elif gcs_transform_WGS84.has_key(gcs):
         return gcs_transform_WGS84[gcs]
     else:
-        raise Exception("GCS_NOT_SUPPORTED: Geographic Transformation to WGS84 not found for projection with GCS: %s"%(gcs)) 
+        raise GPToolError("GCS_NOT_SUPPORTED: Geographic Transformation to WGS84 not found for projection with GCS: %s"%(gcs))
 
 
 
@@ -165,3 +169,14 @@ def getSpatialReferenceFromWKID(WKID):
     spatialReference.factoryCode=4326
     spatialReference.create()
     return spatialReference
+
+
+def isValidAreaProjection(spatialReference):
+    """
+    Determines if projection is valid for area calculations.
+
+    :param spatialReference: spatial reference object
+    :return: True if valid for area projections, False otherwise
+    """
+
+    return spatialReference.projectionName in VALID_AREA_PROJECTION_NAMES

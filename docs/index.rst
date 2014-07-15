@@ -43,22 +43,66 @@ Requirements
 * Published map services containing data to be operated against
 
 
-Installation
-============
+Installation - ArcGIS 10.2.x
+============================
 
-ArcGIS 10.2.x
------------
-TODO
+Use the ArcGIS server command line tool `ags_tool_deploy <https://bitbucket.org/databasin/ags_tool_deploy/>`_ to help
+manage the deployment process.  Install per the instructions in that repository.
+
+Download the latest development snapshot from `develop branch </databasin/databasin_arcgis_geoprocessing_tools/get/develop.zip/>`_ or
+the latest stable version from `master branch </databasin/databasin_arcgis_geoprocessing_tools/get/master.zip/>`_
+
+Then, from a command within the directory containing tools.pyt::
+
+<python_packages_dir>/arcgis_tool_deploy/deploy.py publish tools.pyt databasin_arcgis_geoprocessing_tools <hostname> <admin_username> --password=<admin_password>
+
+
+use ``--overwrite`` if you want to delete and replace and existing service of the same name.
+
+
+Managing with Mercurial:
+Given the active development and bugfixes on this tool, and the challenges in deploying to ArcGIS server, you can also
+clone this repository to your local machine using mercurial, and include basic repository information when you deploy
+the tool to ArcGIS server.  This allows you to pull new updates directly to the ArcGIS server instead of having to
+redeploy the tool.
+
+Use the ``--hg`` option above to include Mercurial repository information.
+
+Then from within the installed location on the ArcGIS server reported using the publish command above, simply run
+``hg pull --update`` to update to the latest changes in the branch you used above (make sure you are on ``develop`` for
+the latest changes or ``master`` for the latest stable changes.
+
+
+Configuration
+=============
+
+Once you have installed this package, you will need to configure ``settings.py`` to point to the correct folder locations
+on your server.  Please make sure that the ArcGIS server process has write permissions on the location of the log file.
+
+
+Testing
+=======
+
+Because this set of tools is built to run on ArcGIS server against running map services, it is necessary to execute the
+tests in the same environment.
+
+Deploy the test data in ``tests/data/test_data_v10.2.sd`` as a map service called ``arcgis_geoprocessing_tools_test_data``
+
+
+
 
 
 Known Limitations
 =================
+* Tabulate tool is very slow due primarily to the implementation of the projection function in ArcGIS (arcpy).  Work is
+  underway to refactor out as many steps where tool is reprojecting data as is possible.
 * A limited range of spatial projections are supported for target calculations and source map services, due to the ArcGIS
-  requirement of including a geographic transformation to project between many different projections.  Currently only continent-scale geographic transformations
-  are included with these tools.  Additional transformations can be added to utilities/ProjectionUtilities.py
+  requirement of including a geographic transformation to project between many different projections.  Currently only
+  continent-scale geographic transformations are included with these tools.  Additional transformations can be added to
+  utilities/ProjectionUtilities.py
 * Tool execution times vary with the number of layers, complexity of geometries, and extent of analysis.  Expect analysis
   of several complex layers over larger areas to be slower.
-* Path routing to ArcGIS layer data sources will not work for enterprise geodatabases
+* Path routing to ArcGIS layer data sources will not work for enterprise geodatabases.
 
 
 

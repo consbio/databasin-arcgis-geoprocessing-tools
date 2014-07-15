@@ -1,0 +1,4 @@
+
+
+class GPToolError(Exception):
+    pass

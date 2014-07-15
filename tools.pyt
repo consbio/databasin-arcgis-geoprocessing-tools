@@ -19,7 +19,7 @@ class Toolbox(object):
     def __init__(self):
         self.label = "databasin_geoprocessing_tools"
         self.alias = "databasin_geoprocessing_tools"
-        self.tools = [TabulateTool]
+        self.tools = [TabulateTool, TestTabulateTool]
 
 
 class TabulateTool(object):
@@ -42,4 +42,26 @@ class TabulateTool(object):
         config=json.loads(parameters[1].valueAsText)
         results = tabulateMapServices(srcFC,config,messages)
         parameters[2].value = json.dumps(results)
+        return
+
+
+class TestTabulateTool(object):
+    def __init__(self):
+        self.label = "test_tabulate"
+        self.description = """Test the tabulate tool.  Test data must be deployed as a map service:
+        arcgis_geoprocessing_tools_test_data"""
+        self.canRunInBackground = False
+
+    def getParameterInfo(self):
+        pass
+
+    def execute(self, parameters, messages):
+        from tests.test_tabulate import test_poly_aoi
+        messages.addMessage("Beginning tests...")
+        messages.addMessage("TESTING: polygon AOI")
+        test_poly_aoi(messages)
+        messages.addMessage("PASSED: polygon AOI")
+
+        logger.info("Tests completed successfully")
+        messages.addMessage("All tests completed successfully")
         return
