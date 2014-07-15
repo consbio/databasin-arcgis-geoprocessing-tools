@@ -46,11 +46,28 @@ Requirements
 Installation - ArcGIS 10.2.x
 ============================
 
+.. note::
+   This tool must be deployed to the root folder, with the name "databasin_arcgis_geoprocessing_tools" to properly
+   work with Data Basin.
+
+
+Pre-packaged versions
+---------------------
+
+These easiest way to install this tool is to deploy the latest service definition file from the `downloads page <https://bitbucket.org/databasin/databasin_arcgis_geoprocessing_tools/downloads/>`_
+
+Simply download, and then upload to your ArcGIS server.  This version comes with a pointer back to the source Mercurial
+repository - develop branch (see below).
+
+
+Packaging and deploying yourself
+--------------------------------
+
 Use the ArcGIS server command line tool `ags_tool_deploy <https://bitbucket.org/databasin/ags_tool_deploy/>`_ to help
 manage the deployment process.  Install per the instructions in that repository.
 
-Download the latest development snapshot from `develop branch </databasin/databasin_arcgis_geoprocessing_tools/get/develop.zip/>`_ or
-the latest stable version from `master branch </databasin/databasin_arcgis_geoprocessing_tools/get/master.zip/>`_
+Download the latest development snapshot from `develop branch <https://bitbucket.org/databasin/databasin_arcgis_geoprocessing_tools/get/develop.zip/>`_
+or the latest stable version from `master branch <https://bitbucket.org/databasin/databasin_arcgis_geoprocessing_tools/get/master.zip/>`_
 
 Then, from a command within the directory containing tools.pyt::
 
@@ -60,7 +77,10 @@ Then, from a command within the directory containing tools.pyt::
 use ``--overwrite`` if you want to delete and replace and existing service of the same name.
 
 
-Managing with Mercurial:
+**Managing with Mercurial:**
+
+.. note:: This assumes Mercurial is installed on your server.
+
 Given the active development and bugfixes on this tool, and the challenges in deploying to ArcGIS server, you can also
 clone this repository to your local machine using mercurial, and include basic repository information when you deploy
 the tool to ArcGIS server.  This allows you to pull new updates directly to the ArcGIS server instead of having to
@@ -72,12 +92,23 @@ Then from within the installed location on the ArcGIS server reported using the 
 ``hg pull --update`` to update to the latest changes in the branch you used above (make sure you are on ``develop`` for
 the latest changes or ``master`` for the latest stable changes.
 
+.. note:: this will overwrite your settings file.  Make sure to update it (below).
+
+Once you have pulled and updated to the latest changes, simply restart the geoprocessing service.
+
 
 Configuration
 =============
 
 Once you have installed this package, you will need to configure ``settings.py`` to point to the correct folder locations
 on your server.  Please make sure that the ArcGIS server process has write permissions on the location of the log file.
+
+Unless you are editing the source code and packaging yourself (above), you will need to edit the this file from its
+installed location on ArcGIS server.  For us, this is:
+``/opt/arcgis/server/usr/directories/arcgissystem/arcgisinput/databasin_arcgis_geoprocessing_tools.GPServer/extracted/v101/settings.py``
+
+This will need to be done each time you deploy a new version of the tool because the ArcGIS deployment process deletes
+the previously deployed files.
 
 
 Testing
@@ -86,7 +117,15 @@ Testing
 Because this set of tools is built to run on ArcGIS server against running map services, it is necessary to execute the
 tests in the same environment.
 
-Deploy the test data in ``tests/data/test_data_v10.2.sd`` as a map service called ``arcgis_geoprocessing_tools_test_data``
+First, deploy this tool and make sure it is properly installed.
+
+Second, deploy the test data from the `downloads page <https://bitbucket.org/databasin/databasin_arcgis_geoprocessing_tools/downloads/>`_
+as a map service called ``arcgis_geoprocessing_tools_test_data``
+
+Next, execute the tool at ``http://<server_hostname>/arcgis/rest/services/databasin_arcgis_geoprocessing_tools/GPServer/test_tabulate``
+
+This will run the test suite as if it were a stand-alone geoprocessing tool.  It will run through a variety of tests.
+If those tests fail, make sure to check your configuration in ``settings.py``
 
 
 

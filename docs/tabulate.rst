@@ -355,19 +355,19 @@ This tool will almost always return successfully, because it is trapping and ret
 These will be include the python stacktrace of the error to assist debugging, unless the error is an input or data error
 that the tool is specifically trying to handle.  Additional information may be present in the logs to indicate the problem.
 
-Example error:
+Example error::
 
-{
-    'sourceFeatureQuantity': 11231.925988334813,
-    'sourceGeometryType': 'polygon',
-    'sourceFeatureCount': 1,
-    'services': [
-        {'layers': [{
-            'error': 'GCS_NOT_SUPPORTED: Geographic Transformation to WGS84 not found for projection with GCS: GCS_North_American_1927',
-            'layerID': 9
-        }],
-        'serviceID': u'arcgis_geoprocessing_tools_test_data'}
-    ],
-    'linear_units': 'kilometers',
-    'area_units': 'hectares'
-}
+    {
+        'sourceFeatureQuantity': 11231.925988334813,
+        'sourceGeometryType': 'polygon',
+        'sourceFeatureCount': 1,
+        'services': [
+            {'layers': [{
+                'error': 'GCS_NOT_SUPPORTED: Geographic Transformation to WGS84 not found for projection with GCS: GCS_North_American_1927',
+                'layerID': 9
+            }],
+            'serviceID': u'arcgis_geoprocessing_tools_test_data'}
+        ],
+        'linear_units': 'kilometers',
+        'area_units': 'hectares'
+    }
