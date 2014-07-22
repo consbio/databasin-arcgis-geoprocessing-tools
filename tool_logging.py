@@ -2,12 +2,15 @@ import os
 import logging
 import logging.config
 
-import settings
+
+LOG_FILENAME = "{0}/log/tools.log".format(os.path.dirname(__file__))
+LOG_LEVEL = "DEBUG"
 
 
-directory, filename = os.path.split(settings.LOG_FILENAME)
-if not os.path.exists(directory):
-    os.makedirs(directory)
+log_dir = os.path.dirname(LOG_FILENAME)
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
 
 logging.config.dictConfig({
     'version': 1,
@@ -21,7 +24,7 @@ logging.config.dictConfig({
         'rotating_file_handler': {
             'formatter': "verbose",
             'class': "logging.handlers.TimedRotatingFileHandler",
-            'filename': os.path.join(directory, filename),
+            'filename': LOG_FILENAME,
             'when': "midnight",
             'delay': True,
             'backupCount': 10
@@ -30,7 +33,7 @@ logging.config.dictConfig({
     'loggers': {
         '': {
         'handlers': ['rotating_file_handler'],
-        'level': settings.LOG_LEVEL
+        'level': LOG_LEVEL
         }
     }
 })
