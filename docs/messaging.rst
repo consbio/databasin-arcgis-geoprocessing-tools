@@ -1,17 +1,8 @@
 .. _logging_messaging:
 
 =====================
-Logging and Messaging
+Messaging
 =====================
-
-
-tool_logging.py
-===============
-
-.. automodule:: tool_logging
-    :members:
-
-
 
 
 messaging.py

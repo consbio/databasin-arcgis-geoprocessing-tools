@@ -33,7 +33,7 @@ Supporting modules:
 .. toctree::
     :maxdepth: 1
 
-    logging_messaging
+    messaging
     utilities
 
 
@@ -92,23 +92,8 @@ Then from within the installed location on the ArcGIS server reported using the 
 ``hg pull --update`` to update to the latest changes in the branch you used above (make sure you are on ``develop`` for
 the latest changes or ``master`` for the latest stable changes.
 
-.. note:: this will overwrite your settings file.  Make sure to update it (below).
-
 Once you have pulled and updated to the latest changes, simply restart the geoprocessing service.
 
-
-Configuration
-=============
-
-Once you have installed this package, you will need to configure ``settings.py`` to point to the correct folder locations
-on your server.  Please make sure that the ArcGIS server process has write permissions on the location of the log file.
-
-Unless you are editing the source code and packaging yourself (above), you will need to edit the this file from its
-installed location on ArcGIS server.  For us, this is:
-``/opt/arcgis/server/usr/directories/arcgissystem/arcgisinput/databasin_arcgis_geoprocessing_tools.GPServer/extracted/v101/settings.py``
-
-This will need to be done each time you deploy a new version of the tool because the ArcGIS deployment process deletes
-the previously deployed files.
 
 
 Testing
@@ -125,7 +110,6 @@ as a map service called ``arcgis_geoprocessing_tools_test_data``
 Next, execute the tool at ``http://<server_hostname>/arcgis/rest/services/databasin_arcgis_geoprocessing_tools/GPServer/test_tabulate``
 
 This will run the test suite as if it were a stand-alone geoprocessing tool.  It will run through a variety of tests.
-If those tests fail, make sure to check your configuration in ``settings.py``
 
 
 
